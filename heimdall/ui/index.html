@@ -75,8 +75,11 @@
       font-family: var(--font-sans);
       overflow-x: hidden;
       line-height: 1.6;
-      selection-background-color: var(--red-primary);
-      selection-color: #fff;
+    }
+
+    ::selection {
+      background-color: var(--red-primary);
+      color: #fff;
     }
 
     /* Ambient noise & grid overlays */
@@ -410,6 +413,7 @@
 
     .hero-title span.accent {
       background: linear-gradient(135deg, #FFF 20%, var(--orange-accent) 60%, var(--red-primary) 100%);
+      background-clip: text;
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
       text-shadow: 0 0 30px rgba(255, 42, 59, 0.3);
