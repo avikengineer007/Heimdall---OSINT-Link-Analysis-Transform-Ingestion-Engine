@@ -594,13 +594,19 @@
       box-shadow: 0 12px 35px rgba(0,0,0,0.8);
     }
 
-    .wb-floating-search input {
+    .wb-floating-search input[type="text"] {
       width: 240px; height: 32px;
       background: rgba(255,255,255,0.04);
       border: 1px solid var(--border-subtle);
       border-radius: 4px; color: #FFF;
       font-family: var(--font-mono); font-size: 0.76rem;
       padding: 0 10px; outline: none;
+    }
+
+    .wb-floating-search input[type="checkbox"] {
+      width: 14px; height: 14px;
+      accent-color: var(--red-primary);
+      cursor: pointer;
     }
 
     .wb-floating-search select {
@@ -1545,7 +1551,7 @@
       logPipeline(`Crawl initialized on target: ${seed}`, 'INFO');
 
       try {
-        const res = await fetch('/api/v1/investigate', {
+        const res = await fetch('/api/v1/investigations/start', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -1556,59 +1562,103 @@
           })
         });
 
-        if (!res.ok) throw new Error(`HTTP ${res.status}: Investigation start failed`);
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(`HTTP ${res.status}: ${errData.detail || 'Investigation start failed'}`);
+        }
         const data = await res.json();
         currentSessionId = data.session_id;
 
-        connectSSE(currentSessionId);
+        connectSSE(currentSessionId, data.stream_url);
       } catch (err) {
         setStatus('error', 'Launch Error');
         logPipeline(`Launch failed: ${err.message}`, 'CRIT');
       }
     }
 
-    function connectSSE(sessionId) {
-      if (evtSource) evtSource.close();
-      evtSource = new EventSource(`/api/v1/investigate/${sessionId}/stream`);
+    function addNodeToCy(urn, value, type, props) {
+      if (!urn) return;
+      if (cy.$id(urn).length > 0) {
+        if (props && Object.keys(props).length) {
+          const existing = cy.$id(urn);
+          const merged = Object.assign({}, existing.data('properties') || {}, props);
+          existing.data('properties', merged);
+        }
+        return;
+      }
+      const cleanType = type || (urn.includes(':') ? urn.split(':')[0] : 'Domain');
+      const cleanVal = value || (urn.includes(':') ? urn.split(':').slice(1).join(':') : urn);
+      const style = getStyle(cleanType);
+      entityCounts[cleanType] = (entityCounts[cleanType] || 0) + 1;
 
-      evtSource.addEventListener('node_added', e => {
-        const node = JSON.parse(e.data);
-        queueBatchElement({ type: 'node', data: node });
-        logPipeline(`Node discovered: ${node.urn}`, 'OK');
+      cy.add({
+        group: 'nodes',
+        data: {
+          id: urn,
+          urn: urn,
+          value: cleanVal,
+          entityType: cleanType,
+          label: cleanVal.length > 24 ? cleanVal.slice(0, 22) + '…' : cleanVal,
+          bgColor: style.color,
+          borderColor: style.color,
+          shape: style.shape,
+          size: 28,
+          properties: props || {}
+        }
+      });
+    }
+
+    function connectSSE(sessionId, streamUrl) {
+      if (evtSource) { evtSource.close(); evtSource = null; }
+      const url = streamUrl || `/api/v1/investigations/${sessionId}/events`;
+      evtSource = new EventSource(url);
+
+      evtSource.addEventListener('INVESTIGATION_STARTED', e => {
+        const data = JSON.parse(e.data);
+        queueBatchElement({ type: 'seed', data: data });
+        logPipeline(`Target seed canonicalized: ${data.seed}`, 'OK');
       });
 
-      evtSource.addEventListener('edge_added', e => {
+      evtSource.addEventListener('EDGE_DISCOVERED', e => {
         const edge = JSON.parse(e.data);
         queueBatchElement({ type: 'edge', data: edge });
       });
 
-      evtSource.addEventListener('transform_start', e => {
+      evtSource.addEventListener('TRANSFORM_COMPLETED', e => {
         const t = JSON.parse(e.data);
         transformCount++;
         document.getElementById('stat-transforms').textContent = transformCount;
-        setStatus('running', `Transform: ${t.transform}`);
-      });
-
-      evtSource.addEventListener('transform_complete', e => {
-        const t = JSON.parse(e.data);
-        if (t.discovered_count > 0) {
-          logPipeline(`${t.transform}: discovered ${t.discovered_count} links`, 'OK');
+        if (t.edges_count > 0) {
+          logPipeline(`${t.transform}: discovered ${t.edges_count} relationships for ${t.entity}`, 'OK');
         }
       });
 
-      evtSource.addEventListener('step_complete', e => {
+      evtSource.addEventListener('DEPTH_STARTED', e => {
         const s = JSON.parse(e.data);
         currentDepth = s.depth;
         document.getElementById('stat-depth').textContent = currentDepth;
+        setStatus('running', `Depth ${currentDepth} (${s.frontier_size} targets)`);
+        logPipeline(`Processing Depth ${currentDepth} (${s.frontier_size} targets in frontier)`, 'INFO');
       });
 
-      evtSource.addEventListener('investigation_complete', () => {
+      evtSource.addEventListener('INVESTIGATION_COMPLETED', e => {
+        flushBatchBuffer();
+        finalize();
+      });
+
+      evtSource.addEventListener('ERROR', e => {
+        const err = JSON.parse(e.data);
+        setStatus('error', 'Execution Error');
+        logPipeline(`Pipeline error: ${err.error}`, 'CRIT');
+      });
+
+      evtSource.addEventListener('STREAM_END', () => {
         flushBatchBuffer();
         finalize();
       });
 
       evtSource.onerror = () => {
-        setStatus('error', 'SSE Reconnecting…');
+        flushBatchBuffer();
       };
     }
 
@@ -1629,29 +1679,19 @@
 
       cy.batch(() => {
         items.forEach(item => {
-          if (item.type === 'node') {
-            const n = item.data;
-            if (cy.$id(n.urn).length === 0) {
-              const style = getStyle(n.type);
-              entityCounts[n.type] = (entityCounts[n.type] || 0) + 1;
-              cy.add({
-                group: 'nodes',
-                data: {
-                  id: n.urn,
-                  urn: n.urn,
-                  value: n.value,
-                  entityType: n.type,
-                  label: n.value.length > 24 ? n.value.slice(0, 22) + '…' : n.value,
-                  bgColor: style.color,
-                  borderColor: style.color,
-                  shape: style.shape,
-                  size: 28,
-                  properties: n.properties || {}
-                }
-              });
-            }
+          if (item.type === 'seed') {
+            const seedUrn = item.data.seed;
+            const parts = seedUrn.split(':');
+            addNodeToCy(seedUrn, parts.slice(1).join(':'), parts[0], {});
           } else if (item.type === 'edge') {
             const ed = item.data;
+            const srcParts = ed.source.split(':');
+            addNodeToCy(ed.source, srcParts.slice(1).join(':'), srcParts[0], {});
+
+            const tgtParts = ed.target.split(':');
+            const tgtVal = tgtParts.length > 1 ? tgtParts.slice(1).join(':') : ed.target;
+            addNodeToCy(ed.target, tgtVal, ed.target_type, ed.properties || {});
+
             const edgeId = `${ed.source}->${ed.target}:${ed.rel}`;
             if (cy.$id(edgeId).length === 0 && cy.$id(ed.source).length && cy.$id(ed.target).length) {
               cy.add({
@@ -1673,6 +1713,7 @@
       updateEntityBreakdown();
       runLayout();
     }
+
 
     function runLayout() {
       if (cy.nodes().length === 0) return;
