@@ -191,12 +191,14 @@ def investigate(seed: str, depth: int, export_path: Optional[str], cypher: bool)
 
 @main.command()
 @click.option("--host", default="127.0.0.1", help="Bind host")
-@click.option("--port", default=8000, type=int, help="Bind port")
-def serve(host: str, port: int):
+@click.option("--port", default=None, type=int, help="Bind port")
+def serve(host: str, port: Optional[int]):
     """Starts the Heimdall FastAPI server."""
+    import os
     import uvicorn
-    console.print(f"[bold green]Starting Heimdall API Server at http://{host}:{port}[/bold green]")
-    uvicorn.run("heimdall.api.app:app", host=host, port=port, reload=False)
+    effective_port = port if port is not None else int(os.environ.get("PORT", 8000))
+    console.print(f"[bold green]Starting Heimdall API Server at http://{host}:{effective_port}[/bold green]")
+    uvicorn.run("heimdall.api.app:app", host=host, port=effective_port, reload=False)
 
 
 if __name__ == "__main__":
