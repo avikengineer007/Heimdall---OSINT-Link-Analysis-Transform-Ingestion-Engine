@@ -14,7 +14,7 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Security, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import RedirectResponse, StreamingResponse, Response
+from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse, Response
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -71,10 +71,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Serve the visual graph UI at /ui if the UI directory exists
+# Static directory path for Heimdall UI
 _ui_dir = Path(__file__).parent.parent / "ui"
 if _ui_dir.exists() and settings.ui_enabled:
-    app.mount("/ui", StaticFiles(directory=str(_ui_dir), html=True), name="ui")
+    app.mount("/static", StaticFiles(directory=str(_ui_dir)), name="static")
 
 # ─── Auth Dependency ──────────────────────────────────────────────────────────
 _http_bearer = HTTPBearer(auto_error=False)
@@ -139,10 +139,14 @@ class InvestigationRequest(BaseModel):
 # ─── Routes ───────────────────────────────────────────────────────────────────
 
 @app.get("/", include_in_schema=False)
-async def root_redirect():
-    """Redirect root to the visual graph UI."""
-    if _ui_dir.exists() and settings.ui_enabled:
-        return RedirectResponse(url="/ui")
+@app.get("/ui", include_in_schema=False)
+@app.get("/ui/", include_in_schema=False)
+@app.get("/ui/index.html", include_in_schema=False)
+async def serve_ui():
+    """Serves the Heimdall visual link-analysis workbench."""
+    index_file = _ui_dir / "index.html"
+    if index_file.exists() and settings.ui_enabled:
+        return FileResponse(str(index_file), media_type="text/html")
     return RedirectResponse(url="/docs")
 
 
