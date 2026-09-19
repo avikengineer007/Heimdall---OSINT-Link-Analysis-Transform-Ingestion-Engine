@@ -71,10 +71,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Static directory path for Heimdall UI
+# Serve the visual graph UI at /ui if the UI directory exists
 _ui_dir = Path(__file__).parent.parent / "ui"
 if _ui_dir.exists() and settings.ui_enabled:
-    app.mount("/static", StaticFiles(directory=str(_ui_dir)), name="static")
+    app.mount("/ui", StaticFiles(directory=str(_ui_dir), html=True), name="ui")
 
 # ─── Auth Dependency ──────────────────────────────────────────────────────────
 _http_bearer = HTTPBearer(auto_error=False)
@@ -142,8 +142,13 @@ class InvestigationRequest(BaseModel):
 @app.get("/ui", include_in_schema=False)
 @app.get("/ui/", include_in_schema=False)
 @app.get("/ui/index.html", include_in_schema=False)
+@app.get("/index.html", include_in_schema=False)
+@app.get("/dashboard", include_in_schema=False)
+@app.get("/console", include_in_schema=False)
+@app.get("/investigate", include_in_schema=False)
+@app.get("/investigation", include_in_schema=False)
 async def serve_ui():
-    """Serves the Heimdall visual link-analysis workbench."""
+    """Serves the visual link-analysis graph dashboard directly on all entry paths."""
     index_file = _ui_dir / "index.html"
     if index_file.exists() and settings.ui_enabled:
         return FileResponse(str(index_file), media_type="text/html")
@@ -199,6 +204,7 @@ async def list_investigations():
 
 
 @app.post("/api/v1/investigations/start", dependencies=[Depends(verify_auth)])
+@app.post("/api/v1/investigate", dependencies=[Depends(verify_auth)], include_in_schema=False)
 async def start_investigation(req: InvestigationRequest):
     """Initiates an asynchronous multi-hop investigation."""
     seed_urn = PipelineOrchestrator.infer_and_normalize_seed(req.seed)
@@ -255,6 +261,7 @@ async def start_investigation(req: InvestigationRequest):
 
 
 @app.get("/api/v1/investigations/{session_id}/events", dependencies=[Depends(verify_auth)])
+@app.get("/api/v1/investigate/{session_id}/stream", dependencies=[Depends(verify_auth)], include_in_schema=False)
 async def stream_investigation_events(session_id: str):
     """Streams real-time OSINT events via Server-Sent Events (SSE)."""
     queue = investigation_events.get(session_id)

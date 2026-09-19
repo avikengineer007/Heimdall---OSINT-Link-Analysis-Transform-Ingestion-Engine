@@ -159,15 +159,8 @@
     .activity-item.error   { border-left-color: #f43f5e; }
     .activity-item.info    { border-left-color: var(--accent); }
 
-    #cy-container {
-      position: relative;
-      background-color: #060913;
-      background-image: 
-        linear-gradient(to right, rgba(56, 189, 248, 0.035) 1px, transparent 1px),
-        linear-gradient(to bottom, rgba(56, 189, 248, 0.035) 1px, transparent 1px),
-        radial-gradient(ellipse at 50% 50%, rgba(56, 189, 248, 0.07) 0%, transparent 70%);
-      background-size: 50px 50px, 50px 50px, 100% 100%;
-    }
+    /* ── Canvas ─────────────────────────────────────────────────────── */
+    #cy-container { position: relative; background: radial-gradient(ellipse at 30% 40%, rgba(56,189,248,0.04) 0%, transparent 60%), radial-gradient(ellipse at 70% 70%, rgba(129,140,248,0.04) 0%, transparent 60%), var(--bg-base); }
     #cy { width: 100%; height: 100%; }
 
     #canvas-toolbar {
@@ -567,31 +560,22 @@ const cy = cytoscape({
       selector: 'node',
       style: {
         'label': 'data(label)',
-        'color': '#FFFFFF',
-        'font-family': 'JetBrains Mono, monospace',
-        'font-size': 10,
-        'font-weight': 600,
+        'color': 'data(textColor)',
+        'font-family': 'Inter, sans-serif',
+        'font-size': 11,
+        'font-weight': 500,
         'text-valign': 'bottom',
-        'text-margin-y': 7,
-        'text-outline-color': '#060913',
-        'text-outline-width': 3,
-        'text-outline-opacity': 0.95,
+        'text-margin-y': 6,
+        'text-outline-color': '#0a0f1a',
+        'text-outline-width': 2,
         'background-color': 'data(bgColor)',
-        'background-fill': 'radial-gradient',
-        'background-gradient-stop-colors': 'data(gradColors)',
-        'background-gradient-stop-positions': '0% 65% 100%',
-        'border-width': 'data(borderWidth)',
+        'border-width': 2,
         'border-color': 'data(borderColor)',
-        'border-opacity': 0.95,
         'width': 'data(size)',
         'height': 'data(size)',
         'shape': 'data(shape)',
-        'underlay-color': 'data(glowColor)',
-        'underlay-padding': 'data(glowPadding)',
-        'underlay-opacity': 'data(glowOpacity)',
-        'underlay-shape': 'data(shape)',
-        'transition-property': 'border-color, border-width, opacity, underlay-padding, underlay-opacity',
-        'transition-duration': '220ms',
+        'transition-property': 'border-color, border-width, opacity',
+        'transition-duration': '200ms',
         'opacity': 0,
       }
     },
@@ -600,37 +584,13 @@ const cy = cytoscape({
       style: { 'opacity': 1 }
     },
     {
-      selector: 'node.seed-node',
-      style: {
-        'border-width': 3.5,
-        'border-color': '#38bdf8',
-        'underlay-color': '#38bdf8',
-        'underlay-padding': 12,
-        'underlay-opacity': 0.55,
-        'font-size': 11.5,
-        'font-weight': 700,
-        'color': '#38bdf8',
-      }
-    },
-    {
-      selector: 'node.threat-node',
-      style: {
-        'border-color': '#ef4444',
-        'underlay-color': '#ef4444',
-        'underlay-padding': 10,
-        'underlay-opacity': 0.6,
-        'font-weight': 700,
-        'color': '#f87171',
-      }
-    },
-    {
       selector: 'node:selected',
       style: {
-        'border-width': 3.5,
+        'border-width': 3,
         'border-color': '#ffffff',
-        'underlay-color': '#38bdf8',
-        'underlay-opacity': 0.7,
-        'underlay-padding': 14,
+        'overlay-color': '#38bdf8',
+        'overlay-opacity': 0.15,
+        'overlay-padding': 4,
       }
     },
     {
@@ -640,33 +600,27 @@ const cy = cytoscape({
     {
       selector: 'edge',
       style: {
-        'width': 1.6,
-        'line-color': 'rgba(56,189,248,0.30)',
-        'target-arrow-color': 'rgba(56,189,248,0.65)',
-        'target-arrow-shape': 'vee',
-        'arrow-scale': 1.25,
+        'width': 1.5,
+        'line-color': 'rgba(56,189,248,0.25)',
+        'target-arrow-color': 'rgba(56,189,248,0.4)',
+        'target-arrow-shape': 'triangle',
         'curve-style': 'bezier',
         'label': 'data(label)',
-        'font-size': 8.5,
-        'font-weight': 500,
-        'color': '#94a3b8',
-        'text-background-color': '#070b14',
-        'text-background-opacity': 0.85,
-        'text-background-padding': 2.5,
-        'text-background-shape': 'round-rectangle',
-        'text-rotation': 'autorotate',
+        'font-size': 9,
+        'color': 'rgba(148,163,184,0.7)',
+        'text-background-color': '#0a0f1a',
+        'text-background-opacity': 0.8,
+        'text-background-padding': 2,
         'font-family': 'JetBrains Mono, monospace',
-        'opacity': 0.85,
+        'opacity': 0.8,
       }
     },
     {
       selector: 'edge:selected',
       style: {
-        'line-color': '#fbbf24',
-        'target-arrow-color': '#fbbf24',
-        'width': 2.8,
+        'line-color': 'rgba(56,189,248,0.7)',
+        'width': 2.5,
         'opacity': 1,
-        'z-index': 999
       }
     },
     {
@@ -906,19 +860,10 @@ function flushBatch() {
 
   cy.batch(() => {
     cy.add(toAdd);
-    // Animate new nodes in and apply glowing seed/threat tags
+    // Animate new nodes in
     toAdd.filter(e => e.group === 'nodes').forEach(e => {
       const node = cy.getElementById(e.data.id);
-      if (node.length) {
-        const seedInputVal = document.getElementById('seed-input')?.value?.trim();
-        if (e.data.id === currentSeedUrn || e.data.value === seedInputVal || (currentSeedUrn && e.data.id.endsWith(currentSeedUrn))) {
-          node.addClass('seed-node');
-        }
-        if (e.data.entityType === 'ThreatScore' || e.data.entityType === 'MaliciousDetection' || e.data.entityType === 'AbuseReport') {
-          node.addClass('threat-node');
-        }
-        setTimeout(() => node.addClass('visible'), 10);
-      }
+      if (node.length) setTimeout(() => node.addClass('visible'), 10);
     });
   });
 
@@ -938,8 +883,8 @@ function flushBatch() {
     uniformNodeDimensions: false,
     packComponents: true,
     step: 'all',
-    nodeRepulsion: () => 6500,
-    idealEdgeLength: () => 85,
+    nodeRepulsion: () => 6000,
+    idealEdgeLength: () => 80,
     edgeElasticity: () => 0.45,
     nestingFactor: 0.1,
     gravity: 0.25,
@@ -953,52 +898,18 @@ function flushBatch() {
   }).run();
 }
 
-function lightenHex(hex, percent) {
-  try {
-    let num = parseInt(hex.replace('#',''), 16),
-        amt = Math.round(2.55 * percent),
-        R = (num >> 16) + amt,
-        G = (num >> 8 & 0x00FF) + amt,
-        B = (num & 0x0000FF) + amt;
-    return '#' + (0x1000000 + (R<255?R<1?0:R:255)*0x10000 + (G<255?G<1?0:G:255)*0x100 + (B<255?B<1?0:B:255)).toString(16).slice(1);
-  } catch(e) { return hex; }
-}
-
-function darkenHex(hex, percent) {
-  try {
-    let num = parseInt(hex.replace('#',''), 16),
-        amt = Math.round(2.55 * percent),
-        R = (num >> 16) - amt,
-        G = (num >> 8 & 0x00FF) - amt,
-        B = (num & 0x0000FF) - amt;
-    return '#' + (0x1000000 + (R>0?R:0)*0x10000 + (G>0?G:0)*0x100 + (B>0?B:0)).toString(16).slice(1);
-  } catch(e) { return hex; }
-}
-
 function buildNodeData(urn, entityType, style) {
   const val = urn.split(':', 2)[1] || urn;
-  const seedInputVal = document.getElementById('seed-input')?.value?.trim();
-  const isSeed = (currentSeedUrn && urn === currentSeedUrn) || (val === seedInputVal) || (currentSeedUrn && urn.endsWith(currentSeedUrn));
   const isHighThreat = entityType === 'ThreatScore' || entityType === 'MaliciousDetection' || entityType === 'AbuseReport';
-  
-  const baseColor = isHighThreat ? '#ef4444' : (isSeed ? '#38bdf8' : style.color);
-  const coreLight = lightenHex(baseColor, 40);
-  const coreDark  = darkenHex(baseColor, 35);
-
   return {
     id: urn, urn, entityType,
     value: val,
-    label: `${style.icon} ${val.length > 20 ? val.slice(0, 18) + '…' : val}`,
-    bgColor: baseColor,
-    gradColors: `${coreLight} ${baseColor} ${coreDark}`,
-    borderColor: isSeed ? '#ffffff' : baseColor,
-    borderWidth: isSeed ? 3.5 : (isHighThreat ? 3 : 2),
-    textColor: '#ffffff',
-    glowColor: isHighThreat ? '#ef4444' : baseColor,
-    glowPadding: isSeed ? 12 : (isHighThreat ? 9 : 5),
-    glowOpacity: isSeed ? 0.5 : (isHighThreat ? 0.55 : 0.28),
-    shape: isSeed ? 'diamond' : style.shape,
-    size: isSeed ? 42 : (isHighThreat ? 36 : (entityType === 'Domain' || entityType === 'IPv4' ? 32 : 26)),
+    label: val.length > 20 ? val.slice(0, 18) + '…' : val,
+    bgColor: style.color + '22',
+    borderColor: style.color,
+    textColor: style.color,
+    shape: style.shape,
+    size: isHighThreat ? 38 : (entityType === 'Domain' || entityType === 'IPv4' ? 34 : 28),
   };
 }
 
