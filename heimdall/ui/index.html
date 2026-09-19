@@ -1,0 +1,1332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Heimdall OSINT Engine — Graph Dashboard</title>
+  <meta name="description" content="Interactive OSINT link-analysis graph dashboard. Discover domains, IPs, emails, certificates, and threat intelligence in real-time." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <!-- Cytoscape.js core -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.28.1/cytoscape.min.js"></script>
+  <!-- fcose layout — Fast Compound Spring Embedder, handles incremental additions gracefully -->
+  <script src="https://unpkg.com/layout-base/layout-base.js"></script>
+  <script src="https://unpkg.com/cose-base/cose-base.js"></script>
+  <script src="https://unpkg.com/cytoscape-fcose/cytoscape-fcose.js"></script>
+  <style>
+    /* ── Reset & Tokens ─────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg-base:     #0a0f1a;
+      --bg-panel:    rgba(15, 23, 42, 0.85);
+      --bg-card:     rgba(20, 30, 55, 0.70);
+      --bg-hover:    rgba(56, 189, 248, 0.08);
+      --border:      rgba(56, 189, 248, 0.15);
+      --border-glow: rgba(56, 189, 248, 0.40);
+      --accent:      #38bdf8;
+      --accent-dim:  #0ea5e9;
+      --text-primary:   #e2e8f0;
+      --text-secondary: #94a3b8;
+      --text-muted:     #475569;
+
+      /* Entity type colors */
+      --c-domain:    #38bdf8;   /* cyan */
+      --c-ip:        #fbbf24;   /* amber */
+      --c-port:      #f43f5e;   /* ruby */
+      --c-threat:    #ef4444;   /* red */
+      --c-email:     #c084fc;   /* purple */
+      --c-org:       #a78bfa;   /* violet */
+      --c-asn:       #34d399;   /* emerald */
+      --c-cidr:      #6ee7b7;   /* light emerald */
+      --c-ssl:       #67e8f9;   /* sky */
+      --c-url:       #fb923c;   /* orange */
+      --c-dmarc:     #e879f9;   /* fuchsia */
+
+      --radius: 12px;
+      --radius-sm: 8px;
+      --transition: 0.18s ease;
+      --glass: blur(14px) saturate(1.4);
+    }
+
+    html, body { width: 100%; height: 100%; background: var(--bg-base); color: var(--text-primary); font-family: 'Inter', sans-serif; overflow: hidden; }
+
+    /* ── Layout ─────────────────────────────────────────────────────── */
+    #app { display: grid; grid-template-rows: 60px 1fr; grid-template-columns: 320px 1fr 320px; height: 100vh; }
+
+    /* ── Topbar ─────────────────────────────────────────────────────── */
+    #topbar {
+      grid-column: 1 / -1;
+      display: flex; align-items: center; gap: 16px; padding: 0 20px;
+      background: var(--bg-panel);
+      backdrop-filter: var(--glass);
+      border-bottom: 1px solid var(--border);
+      z-index: 100;
+    }
+    #logo { display: flex; align-items: center; gap: 10px; text-decoration: none; flex-shrink: 0; }
+    #logo svg { width: 28px; height: 28px; }
+    #logo-text { font-size: 18px; font-weight: 700; background: linear-gradient(135deg, var(--accent), #818cf8); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+
+    #seed-form { display: flex; align-items: center; gap: 8px; flex: 1; }
+    #seed-input {
+      flex: 1; height: 36px; padding: 0 14px;
+      background: rgba(255,255,255,0.05); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); color: var(--text-primary);
+      font-family: 'JetBrains Mono', monospace; font-size: 13px;
+      transition: border-color var(--transition);
+      outline: none;
+    }
+    #seed-input::placeholder { color: var(--text-muted); }
+    #seed-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(56,189,248,0.15); }
+
+    #depth-select {
+      width: 80px; height: 36px; padding: 0 10px;
+      background: rgba(255,255,255,0.05); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); color: var(--text-primary); font-size: 13px;
+      outline: none; cursor: pointer;
+    }
+    #depth-select:focus { border-color: var(--accent); }
+
+    .btn {
+      height: 36px; padding: 0 18px; border-radius: var(--radius-sm);
+      font-size: 13px; font-weight: 600; cursor: pointer; border: none;
+      transition: all var(--transition); white-space: nowrap;
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, var(--accent), var(--accent-dim));
+      color: #0a0f1a;
+    }
+    .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 4px 16px rgba(56,189,248,0.35); }
+    .btn-primary:disabled { opacity: 0.45; transform: none; cursor: not-allowed; }
+    .btn-ghost {
+      background: transparent; border: 1px solid var(--border);
+      color: var(--text-secondary);
+    }
+    .btn-ghost:hover { border-color: var(--accent); color: var(--accent); }
+
+    #topbar-actions { display: flex; gap: 8px; margin-left: auto; }
+
+    /* ── Left Sidebar — Stats ───────────────────────────────────────── */
+    #sidebar-left {
+      background: var(--bg-panel);
+      backdrop-filter: var(--glass);
+      border-right: 1px solid var(--border);
+      overflow-y: auto;
+      padding: 16px;
+      display: flex; flex-direction: column; gap: 16px;
+    }
+
+    .panel-title {
+      font-size: 11px; font-weight: 600; letter-spacing: 0.12em;
+      text-transform: uppercase; color: var(--text-muted);
+      padding-bottom: 8px; border-bottom: 1px solid var(--border);
+    }
+
+    .stat-card {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); padding: 12px 14px;
+      display: flex; flex-direction: column; gap: 4px;
+    }
+    .stat-value { font-size: 28px; font-weight: 700; color: var(--accent); line-height: 1; }
+    .stat-label { font-size: 11px; color: var(--text-muted); }
+
+    .stat-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+    #entity-breakdown { display: flex; flex-direction: column; gap: 4px; }
+    .entity-badge {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 6px 10px; border-radius: 6px; font-size: 12px;
+      background: rgba(255,255,255,0.04);
+      border-left: 3px solid transparent;
+    }
+    .entity-badge-count { font-weight: 600; font-family: 'JetBrains Mono', monospace; font-size: 11px; }
+
+    /* Progress bar for investigation */
+    #progress-section { display: flex; flex-direction: column; gap: 8px; }
+    #progress-bar-wrap { height: 4px; background: rgba(255,255,255,0.06); border-radius: 2px; overflow: hidden; }
+    #progress-bar { height: 100%; background: linear-gradient(90deg, var(--accent), #818cf8); width: 0%; transition: width 0.4s ease; border-radius: 2px; }
+    #progress-label { font-size: 11px; color: var(--text-muted); }
+
+    /* Activity feed */
+    #activity-feed { display: flex; flex-direction: column; gap: 4px; max-height: 300px; overflow-y: auto; }
+    .activity-item {
+      font-size: 11px; color: var(--text-secondary);
+      padding: 5px 8px; border-radius: 4px; border-left: 2px solid var(--border);
+      background: rgba(255,255,255,0.02);
+      font-family: 'JetBrains Mono', monospace;
+      word-break: break-all;
+    }
+    .activity-item.success { border-left-color: #34d399; }
+    .activity-item.error   { border-left-color: #f43f5e; }
+    .activity-item.info    { border-left-color: var(--accent); }
+
+    /* ── Canvas ─────────────────────────────────────────────────────── */
+    #cy-container { position: relative; background: radial-gradient(ellipse at 30% 40%, rgba(56,189,248,0.04) 0%, transparent 60%), radial-gradient(ellipse at 70% 70%, rgba(129,140,248,0.04) 0%, transparent 60%), var(--bg-base); }
+    #cy { width: 100%; height: 100%; }
+
+    #canvas-toolbar {
+      position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%);
+      display: flex; gap: 8px;
+      background: var(--bg-panel); backdrop-filter: var(--glass);
+      border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 8px 12px;
+    }
+    .canvas-btn {
+      width: 32px; height: 32px; border-radius: 6px; border: 1px solid var(--border);
+      background: transparent; color: var(--text-secondary);
+      cursor: pointer; display: flex; align-items: center; justify-content: center;
+      font-size: 16px; transition: all var(--transition);
+    }
+    .canvas-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--bg-hover); }
+
+    #status-badge {
+      position: absolute; top: 14px; left: 50%; transform: translateX(-50%);
+      background: var(--bg-panel); backdrop-filter: var(--glass);
+      border: 1px solid var(--border); border-radius: 20px;
+      padding: 6px 16px; font-size: 12px; color: var(--text-secondary);
+      display: flex; align-items: center; gap: 8px;
+      transition: all 0.3s ease;
+    }
+    #status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-muted); transition: background 0.3s; }
+    #status-dot.running { background: #34d399; animation: pulse 1.4s infinite; }
+    #status-dot.error   { background: #f43f5e; }
+    #status-dot.done    { background: var(--accent); }
+    @keyframes pulse { 0%,100%{ opacity:1 } 50%{ opacity:0.4 } }
+
+    /* Context menu */
+    #ctx-menu {
+      position: fixed; z-index: 200; min-width: 180px;
+      background: var(--bg-panel); backdrop-filter: var(--glass);
+      border: 1px solid var(--border); border-radius: var(--radius-sm);
+      padding: 6px 0; display: none; box-shadow: 0 12px 40px rgba(0,0,0,0.6);
+    }
+    .ctx-item {
+      padding: 8px 16px; font-size: 13px; color: var(--text-secondary);
+      cursor: pointer; display: flex; align-items: center; gap: 8px;
+      transition: all var(--transition);
+    }
+    .ctx-item:hover { background: var(--bg-hover); color: var(--accent); }
+    .ctx-divider { height: 1px; background: var(--border); margin: 4px 0; }
+
+    /* ── Right Sidebar — Node Inspector ─────────────────────────────── */
+    #sidebar-right {
+      background: var(--bg-panel);
+      backdrop-filter: var(--glass);
+      border-left: 1px solid var(--border);
+      overflow-y: auto; padding: 16px;
+      display: flex; flex-direction: column; gap: 16px;
+    }
+
+    #inspector-placeholder {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      flex: 1; gap: 12px; color: var(--text-muted); text-align: center; padding: 40px 20px;
+    }
+    #inspector-placeholder svg { opacity: 0.3; }
+    #inspector-placeholder p { font-size: 12px; line-height: 1.6; }
+
+    #inspector-content { display: none; flex-direction: column; gap: 12px; }
+
+    .inspector-header {
+      display: flex; align-items: flex-start; gap: 12px;
+      padding-bottom: 12px; border-bottom: 1px solid var(--border);
+    }
+    .inspector-icon {
+      width: 40px; height: 40px; border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px; flex-shrink: 0;
+    }
+    .inspector-meta h3 { font-size: 14px; font-weight: 600; word-break: break-all; }
+    .inspector-meta .type-tag {
+      display: inline-block; margin-top: 4px; padding: 2px 8px;
+      border-radius: 4px; font-size: 10px; font-weight: 600; letter-spacing: 0.08em;
+    }
+
+    .inspector-section h4 { font-size: 11px; font-weight: 600; color: var(--text-muted); letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 8px; }
+    .prop-row { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid rgba(255,255,255,0.04); font-size: 12px; gap: 8px; }
+    .prop-key { color: var(--text-muted); flex-shrink: 0; }
+    .prop-val { color: var(--text-primary); text-align: right; word-break: break-all; font-family: 'JetBrains Mono', monospace; font-size: 11px; }
+
+    #neighbor-list { display: flex; flex-direction: column; gap: 4px; max-height: 180px; overflow-y: auto; }
+    .neighbor-chip {
+      padding: 5px 10px; border-radius: 6px; font-size: 11px;
+      font-family: 'JetBrains Mono', monospace;
+      background: rgba(255,255,255,0.04); border: 1px solid var(--border);
+      cursor: pointer; transition: all var(--transition);
+      word-break: break-all;
+    }
+    .neighbor-chip:hover { border-color: var(--accent); background: var(--bg-hover); color: var(--accent); }
+
+    #threat-meter { display: flex; flex-direction: column; gap: 6px; }
+    #threat-bar-wrap { height: 8px; background: rgba(255,255,255,0.06); border-radius: 4px; overflow: hidden; }
+    #threat-bar { height: 100%; border-radius: 4px; transition: width 0.6s ease, background 0.6s ease; }
+    #threat-score-label { font-size: 12px; font-weight: 600; }
+
+    /* ── Tooltip ─────────────────────────────────────────────────────── */
+    #tooltip {
+      position: fixed; z-index: 300; pointer-events: none;
+      background: var(--bg-panel); backdrop-filter: var(--glass);
+      border: 1px solid var(--border); border-radius: 8px;
+      padding: 8px 12px; font-size: 12px; color: var(--text-primary);
+      max-width: 280px; word-break: break-all; display: none;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+    }
+
+    /* ── Export Modal ────────────────────────────────────────────────── */
+    #export-modal {
+      display: none; position: fixed; inset: 0; z-index: 500;
+      background: rgba(0,0,0,0.7); backdrop-filter: blur(4px);
+      align-items: center; justify-content: center;
+    }
+    #export-modal.open { display: flex; }
+    .modal-box {
+      background: var(--bg-panel); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 28px; width: 360px;
+      box-shadow: 0 24px 64px rgba(0,0,0,0.7);
+    }
+    .modal-box h2 { font-size: 18px; font-weight: 700; margin-bottom: 20px; }
+    .export-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 20px; }
+    .export-btn {
+      display: flex; flex-direction: column; align-items: center; gap: 8px;
+      padding: 16px 10px; border-radius: var(--radius-sm);
+      border: 1px solid var(--border); background: var(--bg-card);
+      cursor: pointer; color: var(--text-secondary); font-size: 12px; font-weight: 600;
+      transition: all var(--transition);
+    }
+    .export-btn .icon { font-size: 24px; }
+    .export-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--bg-hover); }
+
+    /* ── Scrollbars ─────────────────────────────────────────────────── */
+    ::-webkit-scrollbar { width: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  </style>
+</head>
+<body>
+<div id="app">
+
+  <!-- ═══ TOPBAR ═══════════════════════════════════════════════════ -->
+  <header id="topbar">
+    <a id="logo" href="#">
+      <svg viewBox="0 0 28 28" fill="none">
+        <circle cx="14" cy="14" r="13" stroke="#38bdf8" stroke-width="1.5"/>
+        <path d="M14 6l6 8-6 8-6-8 6-8z" fill="#38bdf8" opacity="0.9"/>
+        <circle cx="14" cy="14" r="3" fill="#0ea5e9"/>
+      </svg>
+      <span id="logo-text">HEIMDALL</span>
+    </a>
+
+    <form id="seed-form" onsubmit="startInvestigation(event)">
+      <input id="seed-input" type="text" placeholder="domain.com  |  1.2.3.4  |  user@example.com" autocomplete="off" spellcheck="false" />
+      <select id="depth-select" title="Max hop depth">
+        <option value="1">Depth 1</option>
+        <option value="2" selected>Depth 2</option>
+        <option value="3">Depth 3</option>
+        <option value="4">Depth 4</option>
+      </select>
+      <button type="submit" id="investigate-btn" class="btn btn-primary">⚡ Investigate</button>
+      <button type="button" class="btn btn-ghost" onclick="clearGraph()">Clear</button>
+    </form>
+
+    <div id="topbar-actions">
+      <button class="btn btn-ghost" onclick="openExportModal()">⬇ Export</button>
+      <button class="btn btn-ghost" onclick="cy.fit()" title="Fit graph">⊡ Fit</button>
+      <button class="btn btn-ghost" onclick="runLayout()" title="Re-layout">⟳ Layout</button>
+    </div>
+  </header>
+
+  <!-- ═══ LEFT SIDEBAR — Stats ══════════════════════════════════════ -->
+  <aside id="sidebar-left">
+    <div>
+      <p class="panel-title">Investigation Stats</p>
+    </div>
+
+    <div id="progress-section">
+      <div id="progress-bar-wrap"><div id="progress-bar"></div></div>
+      <span id="progress-label">Ready — enter a seed to begin</span>
+    </div>
+
+    <div class="stat-row">
+      <div class="stat-card"><div class="stat-value" id="stat-nodes">0</div><div class="stat-label">Nodes</div></div>
+      <div class="stat-card"><div class="stat-value" id="stat-edges">0</div><div class="stat-label">Edges</div></div>
+    </div>
+    <div class="stat-row">
+      <div class="stat-card"><div class="stat-value" id="stat-depth">—</div><div class="stat-label">Depth</div></div>
+      <div class="stat-card"><div class="stat-value" id="stat-transforms">0</div><div class="stat-label">Transforms Run</div></div>
+    </div>
+
+    <div>
+      <p class="panel-title" style="margin-bottom:10px">Entity Types</p>
+      <div id="entity-breakdown">
+        <!-- populated dynamically -->
+      </div>
+    </div>
+
+    <div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <p class="panel-title" style="border-bottom:none;padding-bottom:0">Ego-Net Radius</p>
+        <span id="ego-radius-val" style="font-size:11px;color:var(--accent);font-family:'JetBrains Mono',monospace">All</span>
+      </div>
+      <input type="range" id="ego-slider" min="1" max="4" value="4" style="width:100%;accent-color:var(--accent);cursor:pointer" oninput="onEgoRadiusChange(this.value)" />
+    </div>
+
+    <div>
+      <p class="panel-title" style="margin-bottom:8px">Activity Log</p>
+      <div id="activity-feed"></div>
+    </div>
+  </aside>
+
+  <!-- ═══ GRAPH CANVAS ═══════════════════════════════════════════════ -->
+  <main id="cy-container">
+    <div id="cy"></div>
+    <div id="status-badge">
+      <div id="status-dot"></div>
+      <span id="status-text">Idle</span>
+    </div>
+    <div id="canvas-toolbar">
+      <button class="canvas-btn" onclick="cy.zoom(cy.zoom()*1.25)" title="Zoom in">+</button>
+      <button class="canvas-btn" onclick="cy.zoom(cy.zoom()*0.8)" title="Zoom out">−</button>
+      <button class="canvas-btn" onclick="cy.fit()" title="Fit all">⊡</button>
+      <button class="canvas-btn" onclick="cy.center()" title="Center">◎</button>
+      <button class="canvas-btn" onclick="togglePhysics()" id="physics-btn" title="Toggle physics">⚙</button>
+      <button class="canvas-btn" onclick="togglePathMode()" id="path-mode-btn" title="A* Shortest Path">⚡</button>
+      <button class="canvas-btn" onclick="toggleGroupByType()" id="group-btn" title="Group by Entity Type">🗂</button>
+      <button class="canvas-btn" onclick="openDiffModal()" id="diff-btn" title="Compare Sessions (Diff)">🔀</button>
+    </div>
+  </main>
+
+  <!-- ═══ RIGHT SIDEBAR — Node Inspector ════════════════════════════ -->
+  <aside id="sidebar-right">
+    <p class="panel-title">Node Inspector</p>
+
+    <div id="inspector-placeholder">
+      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+      </svg>
+      <p>Click any node on the graph to inspect its properties, connections, and threat intelligence data.</p>
+    </div>
+
+    <div id="inspector-content">
+      <div class="inspector-header">
+        <div class="inspector-icon" id="insp-icon"></div>
+        <div class="inspector-meta">
+          <h3 id="insp-value"></h3>
+          <span class="type-tag" id="insp-type-tag"></span>
+        </div>
+      </div>
+
+      <div class="inspector-section" id="insp-threat-section" style="display:none">
+        <h4>Threat Score</h4>
+        <div id="threat-meter">
+          <div id="threat-bar-wrap"><div id="threat-bar" style="width:0%"></div></div>
+          <span id="threat-score-label"></span>
+        </div>
+      </div>
+
+      <div class="inspector-section" id="insp-props-section">
+        <h4>Properties</h4>
+        <div id="insp-props"></div>
+      </div>
+
+      <div class="inspector-section">
+        <h4>Connections (<span id="insp-neighbor-count">0</span>)</h4>
+        <div id="neighbor-list"></div>
+      </div>
+
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-primary" style="font-size:11px;height:30px;padding:0 12px" onclick="runTransformOnSelected()">Run Transforms</button>
+        <button class="btn btn-ghost" style="font-size:11px;height:30px;padding:0 12px" onclick="focusOnSelected()">Focus Subgraph</button>
+        <button class="btn btn-ghost" style="font-size:11px;height:30px;padding:0 12px" onclick="copyUrn()">Copy URN</button>
+      </div>
+    </div>
+  </aside>
+</div>
+
+<!-- Context Menu -->
+<div id="ctx-menu">
+  <div class="ctx-item" onclick="runTransformOnCtxNode()">⚡ Run Transforms</div>
+  <div class="ctx-item" onclick="focusOnCtxNode()">🔍 Focus Subgraph</div>
+  <div class="ctx-item" onclick="pinCtxNode()">📌 Pin Node</div>
+  <div class="ctx-divider"></div>
+  <div class="ctx-item" onclick="copyCtxUrn()">📋 Copy URN</div>
+  <div class="ctx-item" onclick="removeCtxNode()">🗑 Remove Node</div>
+</div>
+
+<!-- Tooltip -->
+<div id="tooltip"></div>
+
+<!-- Export Modal -->
+<div id="export-modal">
+  <div class="modal-box">
+    <h2>Export Graph</h2>
+    <div class="export-grid">
+      <div class="export-btn" onclick="doExport('json')">
+        <span class="icon">📄</span>JSON
+      </div>
+      <div class="export-btn" onclick="doExport('graphml')">
+        <span class="icon">🔷</span>GraphML
+      </div>
+      <div class="export-btn" onclick="doExport('mtgx')">
+        <span class="icon">🦅</span>Maltego
+      </div>
+    </div>
+    <div style="display:flex;justify-content:flex-end">
+      <button class="btn btn-ghost" onclick="closeExportModal()">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Diff Modal -->
+<div id="diff-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);backdrop-filter:blur(6px);z-index:300;align-items:center;justify-content:center">
+  <div class="modal-box" style="background:var(--bg-panel);border:1px solid var(--border);border-radius:var(--radius);padding:24px;width:440px;display:flex;flex-direction:column;gap:16px">
+    <h2 style="font-size:16px;color:var(--text-primary)">Compare Investigation Sessions</h2>
+    <p style="font-size:12px;color:var(--text-secondary)">Calculate attack surface deltas between baseline and sweep sessions.</p>
+    <div>
+      <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px">Base Session ID (A)</label>
+      <input type="text" id="diff-session-a" style="width:100%;height:34px;padding:0 10px;background:rgba(255,255,255,0.05);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text-primary);font-family:'JetBrains Mono', monospace;font-size:12px" placeholder="Baseline session UUID" />
+    </div>
+    <div>
+      <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px">Target Session ID (B)</label>
+      <input type="text" id="diff-session-b" style="width:100%;height:34px;padding:0 10px;background:rgba(255,255,255,0.05);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text-primary);font-family:'JetBrains Mono', monospace;font-size:12px" placeholder="Sweep session UUID" />
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:8px">
+      <button class="btn btn-ghost" onclick="closeDiffModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="executeDiffComparison()">Compute Diff</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Application Script ─────────────────────────────────────────── -->
+<script>
+'use strict';
+
+// ═══════════════════════════════════════════════════════════════════
+// Entity type → visual style mapping
+// ═══════════════════════════════════════════════════════════════════
+const ENTITY_STYLES = {
+  Domain:          { color: '#38bdf8', shape: 'ellipse',   icon: '🌐', label: 'Domain' },
+  Subdomain:       { color: '#7dd3fc', shape: 'ellipse',   icon: '🔗', label: 'Subdomain' },
+  IPv4:            { color: '#fbbf24', shape: 'rectangle', icon: '🖥', label: 'IPv4' },
+  IPv6:            { color: '#f59e0b', shape: 'rectangle', icon: '🖥', label: 'IPv6' },
+  PortService:     { color: '#f43f5e', shape: 'hexagon',   icon: '🔌', label: 'PortService' },
+  ThreatScore:     { color: '#ef4444', shape: 'octagon',   icon: '⚠️', label: 'Threat' },
+  MaliciousDetection: { color: '#dc2626', shape: 'octagon', icon: '🚨', label: 'Malicious' },
+  Email:           { color: '#c084fc', shape: 'diamond',   icon: '✉️', label: 'Email' },
+  Organization:    { color: '#a78bfa', shape: 'diamond',   icon: '🏢', label: 'Org' },
+  Registrar:       { color: '#818cf8', shape: 'diamond',   icon: '📋', label: 'Registrar' },
+  ASNumber:        { color: '#34d399', shape: 'barrel',    icon: '🌍', label: 'ASN' },
+  CIDRBlock:       { color: '#6ee7b7', shape: 'barrel',    icon: '📡', label: 'CIDR' },
+  SSLCertificate:  { color: '#67e8f9', shape: 'round-rectangle', icon: '🔒', label: 'SSL' },
+  Person:          { color: '#f9a8d4', shape: 'ellipse',   icon: '👤', label: 'Person' },
+  URL:             { color: '#fb923c', shape: 'round-rectangle', icon: '🔗', label: 'URL' },
+  DMARCPolicy:     { color: '#e879f9', shape: 'pentagon',  icon: '🛡', label: 'DMARC' },
+  AbuseReport:     { color: '#fca5a5', shape: 'octagon',   icon: '🚩', label: 'Abuse' },
+  InternetExchange:{ color: '#4ade80', shape: 'barrel',    icon: '🔀', label: 'IX' },
+  ServiceBanner:   { color: '#f43f5e', shape: 'hexagon',   icon: '🏷️', label: 'Banner' },
+  SecurityHeader:  { color: '#38bdf8', shape: 'round-rectangle', icon: '🛡️', label: 'SecHeader' },
+  WAFSignature:    { color: '#ec4899', shape: 'diamond',   icon: '🧱', label: 'WAF' },
+  TLSCertificate:  { color: '#67e8f9', shape: 'round-rectangle', icon: '🔒', label: 'TLSCert' },
+};
+function getStyle(entityType) {
+  return ENTITY_STYLES[entityType] || { color: '#94a3b8', shape: 'ellipse', icon: '◉', label: entityType };
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// State
+// ═══════════════════════════════════════════════════════════════════
+let currentSessionId = null;
+let currentSeedUrn   = null;
+let evtSource        = null;
+let sseReconnectTimer = null;
+let physicsEnabled   = true;
+let selectedNode     = null;
+let ctxNode          = null;
+let transformCount   = 0;
+let currentDepth     = 0;
+
+// SSE 150ms batch buffer
+let batchBuffer = [];
+let batchFlushTimer = null;
+
+// Entity type counters
+const entityCounts = {};
+
+// ═══════════════════════════════════════════════════════════════════
+// Cytoscape Initialization
+// ═══════════════════════════════════════════════════════════════════
+const cy = cytoscape({
+  container: document.getElementById('cy'),
+  elements: [],
+  style: [
+    {
+      selector: 'node',
+      style: {
+        'label': 'data(label)',
+        'color': 'data(textColor)',
+        'font-family': 'Inter, sans-serif',
+        'font-size': 11,
+        'font-weight': 500,
+        'text-valign': 'bottom',
+        'text-margin-y': 6,
+        'text-outline-color': '#0a0f1a',
+        'text-outline-width': 2,
+        'background-color': 'data(bgColor)',
+        'border-width': 2,
+        'border-color': 'data(borderColor)',
+        'width': 'data(size)',
+        'height': 'data(size)',
+        'shape': 'data(shape)',
+        'transition-property': 'border-color, border-width, opacity',
+        'transition-duration': '200ms',
+        'opacity': 0,
+      }
+    },
+    {
+      selector: 'node.visible',
+      style: { 'opacity': 1 }
+    },
+    {
+      selector: 'node:selected',
+      style: {
+        'border-width': 3,
+        'border-color': '#ffffff',
+        'overlay-color': '#38bdf8',
+        'overlay-opacity': 0.15,
+        'overlay-padding': 4,
+      }
+    },
+    {
+      selector: 'node.pinned',
+      style: { 'border-style': 'dashed' }
+    },
+    {
+      selector: 'edge',
+      style: {
+        'width': 1.5,
+        'line-color': 'rgba(56,189,248,0.25)',
+        'target-arrow-color': 'rgba(56,189,248,0.4)',
+        'target-arrow-shape': 'triangle',
+        'curve-style': 'bezier',
+        'label': 'data(label)',
+        'font-size': 9,
+        'color': 'rgba(148,163,184,0.7)',
+        'text-background-color': '#0a0f1a',
+        'text-background-opacity': 0.8,
+        'text-background-padding': 2,
+        'font-family': 'JetBrains Mono, monospace',
+        'opacity': 0.8,
+      }
+    },
+    {
+      selector: 'edge:selected',
+      style: {
+        'line-color': 'rgba(56,189,248,0.7)',
+        'width': 2.5,
+        'opacity': 1,
+      }
+    },
+    {
+      selector: 'node.path-node',
+      style: {
+        'border-color': '#fbbf24',
+        'border-width': 4,
+        'overlay-color': '#fbbf24',
+        'overlay-opacity': 0.25,
+        'overlay-padding': 6,
+      }
+    },
+    {
+      selector: 'edge.path-edge',
+      style: {
+        'line-color': '#fbbf24',
+        'target-arrow-color': '#fbbf24',
+        'width': 4,
+        'opacity': 1,
+        'z-index': 999,
+      }
+    },
+    {
+      selector: 'node.delta-added',
+      style: {
+        'border-color': '#34d399',
+        'border-width': 4,
+        'overlay-color': '#34d399',
+        'overlay-opacity': 0.2,
+      }
+    },
+    {
+      selector: 'node.delta-removed',
+      style: {
+        'border-color': '#f43f5e',
+        'border-style': 'dashed',
+        'border-width': 3,
+        'opacity': 0.5,
+      }
+    },
+    {
+      selector: 'node.delta-changed',
+      style: {
+        'border-color': '#f59e0b',
+        'border-width': 4,
+      }
+    },
+    {
+      selector: 'node:parent',
+      style: {
+        'background-opacity': 0.08,
+        'background-color': '#38bdf8',
+        'border-color': 'rgba(56,189,248,0.4)',
+        'border-width': 1,
+        'border-style': 'dashed',
+        'label': 'data(label)',
+        'color': '#94a3b8',
+        'font-size': 12,
+        'text-valign': 'top',
+        'text-halign': 'center',
+        'text-margin-y': -8,
+      }
+    },
+    {
+      selector: '.hidden-ego',
+      style: { 'display': 'none' }
+    }
+  ],
+  layout: { name: 'preset' },
+  zoom: 1,
+  minZoom: 0.05,
+  maxZoom: 8,
+  wheelSensitivity: 0.3,
+});
+
+// ─── Cytoscape Events ────────────────────────────────────────────
+cy.on('tap', 'node', evt => {
+  if (pathMode) {
+    handlePathTap(evt.target);
+    return;
+  }
+  selectNode(evt.target);
+});
+cy.on('tap', evt => { if (evt.target === cy) clearInspector(); });
+cy.on('cxttap', 'node', evt => { openCtxMenu(evt, evt.target); });
+cy.on('tap', () => closeCtxMenu());
+cy.on('mouseover', 'node', evt => showTooltip(evt));
+cy.on('mouseout', 'node', () => hideTooltip());
+
+// ═══════════════════════════════════════════════════════════════════
+// Investigation Lifecycle
+// ═══════════════════════════════════════════════════════════════════
+async function startInvestigation(evt) {
+  evt.preventDefault();
+  const seed  = document.getElementById('seed-input').value.trim();
+  const depth = parseInt(document.getElementById('depth-select').value);
+  if (!seed) return;
+
+  clearGraph();
+  setStatus('running', `Investigating ${seed}…`);
+  document.getElementById('investigate-btn').disabled = true;
+  document.getElementById('progress-label').textContent = 'Starting investigation…';
+  document.getElementById('progress-bar').style.width = '5%';
+  transformCount = 0; currentDepth = 0;
+
+  try {
+    const res = await fetch('/api/v1/investigations/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ seed, max_depth: depth }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      setStatus('error', err.detail || 'Failed to start investigation');
+      document.getElementById('investigate-btn').disabled = false;
+      return;
+    }
+    const data = await res.json();
+    currentSessionId = data.session_id;
+    currentSeedUrn   = data.seed;
+    connectEventStream(data.session_id);
+    logActivity(`🚀 Investigating ${data.seed} (depth ${depth})`, 'info');
+  } catch (e) {
+    setStatus('error', 'Network error — is the Heimdall API running?');
+    document.getElementById('investigate-btn').disabled = false;
+  }
+}
+
+function connectEventStream(sessionId, retryCount = 0) {
+  if (evtSource) { evtSource.close(); evtSource = null; }
+  clearTimeout(sseReconnectTimer);
+
+  evtSource = new EventSource(`/api/v1/investigations/${sessionId}/events`);
+
+  evtSource.addEventListener('message', evt => {
+    try {
+      const payload = JSON.parse(evt.data);
+      handleSseEvent(payload);
+    } catch { /* ignore malformed frames */ }
+  });
+
+  // Named event types from the API
+  ['INVESTIGATION_STARTED','DEPTH_STARTED','TRANSFORM_COMPLETED',
+   'EDGE_DISCOVERED','INVESTIGATION_COMPLETED','ERROR','STREAM_END'].forEach(name => {
+    evtSource.addEventListener(name, evt => {
+      try { handleSseEvent({ type: name, data: JSON.parse(evt.data || '{}') }); } catch {}
+    });
+  });
+
+  evtSource.onerror = () => {
+    if (retryCount < 5) {
+      const delay = Math.min(500 * Math.pow(2, retryCount), 8000);
+      setStatus('running', `Stream interrupted, reconnecting in ${Math.round(delay/1000)}s…`);
+      sseReconnectTimer = setTimeout(() => connectEventStream(sessionId, retryCount + 1), delay);
+    } else {
+      setStatus('error', 'Event stream lost. Investigation may have completed.');
+      finalize();
+    }
+  };
+}
+
+function handleSseEvent(payload) {
+  const { type, data } = payload;
+  switch (type) {
+    case 'DEPTH_STARTED':
+      currentDepth = data.depth || currentDepth + 1;
+      const maxDepth = parseInt(document.getElementById('depth-select').value);
+      document.getElementById('progress-bar').style.width = `${Math.min(90, (currentDepth / maxDepth) * 85 + 10)}%`;
+      document.getElementById('progress-label').textContent = `Depth ${currentDepth}/${maxDepth} — ${data.frontier_size || 0} entities queued`;
+      document.getElementById('stat-depth').textContent = currentDepth;
+      break;
+
+    case 'TRANSFORM_COMPLETED':
+      transformCount++;
+      document.getElementById('stat-transforms').textContent = transformCount;
+      if (data.status === 'SUCCESS' && data.edges_count > 0) {
+        logActivity(`✓ ${data.transform} → ${data.edges_count} edges (${data.entity?.split(':')[1] || ''})`, 'success');
+      }
+      break;
+
+    case 'EDGE_DISCOVERED':
+      // Buffer for 150ms batch flush
+      batchBuffer.push(data);
+      if (!batchFlushTimer) {
+        batchFlushTimer = setTimeout(flushBatch, 150);
+      }
+      break;
+
+    case 'INVESTIGATION_COMPLETED':
+    case 'STREAM_END':
+      flushBatch();
+      if (evtSource) { evtSource.close(); evtSource = null; }
+      finalize();
+      break;
+
+    case 'ERROR':
+      logActivity(`✗ ${data.error || 'Unknown error'}`, 'error');
+      break;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Batch Graph Rendering (150ms window)
+// ═══════════════════════════════════════════════════════════════════
+function flushBatch() {
+  clearTimeout(batchFlushTimer);
+  batchFlushTimer = null;
+
+  if (batchBuffer.length === 0) return;
+  const items = batchBuffer.splice(0, batchBuffer.length);
+
+  const toAdd = [];
+  items.forEach(edge => {
+    const srcType  = edge.source?.split(':')[0] || 'Unknown';
+    const tgtType  = edge.target_type || edge.target?.split(':')[0] || 'Unknown';
+    const srcStyle = getStyle(srcType);
+    const tgtStyle = getStyle(tgtType);
+
+    if (!cy.getElementById(edge.source).length) {
+      entityCounts[srcType] = (entityCounts[srcType] || 0) + 1;
+      toAdd.push({ group: 'nodes', data: buildNodeData(edge.source, srcType, srcStyle) });
+    }
+    if (!cy.getElementById(edge.target).length) {
+      entityCounts[tgtType] = (entityCounts[tgtType] || 0) + 1;
+      toAdd.push({ group: 'nodes', data: buildNodeData(edge.target, tgtType, tgtStyle) });
+    }
+    const edgeId = `${edge.source}|${edge.rel}|${edge.target}`;
+    if (!cy.getElementById(edgeId).length) {
+      toAdd.push({
+        group: 'edges',
+        data: { id: edgeId, source: edge.source, target: edge.target, label: edge.rel?.replace(/_/g,' ').toLowerCase() || '' }
+      });
+    }
+  });
+
+  if (toAdd.length === 0) return;
+
+  cy.batch(() => {
+    cy.add(toAdd);
+    // Animate new nodes in
+    toAdd.filter(e => e.group === 'nodes').forEach(e => {
+      const node = cy.getElementById(e.data.id);
+      if (node.length) setTimeout(() => node.addClass('visible'), 10);
+    });
+  });
+
+  updateStats();
+  updateEntityBreakdown();
+
+  // Bounded incremental layout — no randomize, no fit, preserves existing positions
+  cy.layout({
+    name: 'fcose',
+    quality: 'default',
+    randomize: false,
+    fit: false,
+    animate: true,
+    animationDuration: 300,
+    animationEasing: 'ease-out',
+    nodeDimensionsIncludeLabels: true,
+    uniformNodeDimensions: false,
+    packComponents: true,
+    step: 'all',
+    nodeRepulsion: () => 6000,
+    idealEdgeLength: () => 80,
+    edgeElasticity: () => 0.45,
+    nestingFactor: 0.1,
+    gravity: 0.25,
+    gravityRange: 3.8,
+    gravityCompound: 1.0,
+    gravityRangeCompound: 1.5,
+    numIter: 2500,
+    tile: true,
+    tilingPaddingVertical: 20,
+    tilingPaddingHorizontal: 20,
+  }).run();
+}
+
+function buildNodeData(urn, entityType, style) {
+  const val = urn.split(':', 2)[1] || urn;
+  const isHighThreat = entityType === 'ThreatScore' || entityType === 'MaliciousDetection' || entityType === 'AbuseReport';
+  return {
+    id: urn, urn, entityType,
+    value: val,
+    label: val.length > 20 ? val.slice(0, 18) + '…' : val,
+    bgColor: style.color + '22',
+    borderColor: style.color,
+    textColor: style.color,
+    shape: style.shape,
+    size: isHighThreat ? 38 : (entityType === 'Domain' || entityType === 'IPv4' ? 34 : 28),
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Node Inspector
+// ═══════════════════════════════════════════════════════════════════
+function selectNode(node) {
+  selectedNode = node;
+  cy.elements().unselect();
+  node.select();
+
+  const data = node.data();
+  const style = getStyle(data.entityType);
+
+  document.getElementById('inspector-placeholder').style.display = 'none';
+  const content = document.getElementById('inspector-content');
+  content.style.display = 'flex';
+
+  // Icon + header
+  const icon = document.getElementById('insp-icon');
+  icon.textContent = style.icon;
+  icon.style.background = style.color + '22';
+  icon.style.border = `1px solid ${style.color}44`;
+
+  document.getElementById('insp-value').textContent = data.value;
+  const typeTag = document.getElementById('insp-type-tag');
+  typeTag.textContent = style.label;
+  typeTag.style.background = style.color + '22';
+  typeTag.style.color = style.color;
+
+  // Threat score from node properties if present
+  const props = data.properties || {};
+  const threatScore = props.threat_score;
+  const threatSection = document.getElementById('insp-threat-section');
+  if (typeof threatScore === 'number') {
+    threatSection.style.display = 'block';
+    const bar = document.getElementById('threat-bar');
+    const label = document.getElementById('threat-score-label');
+    const [bg, risk] = threatScore >= 75 ? ['#ef4444','Critical'] : threatScore >= 50 ? ['#f59e0b','High'] : threatScore >= 25 ? ['#fbbf24','Medium'] : ['#34d399','Low'];
+    bar.style.width = `${threatScore}%`;
+    bar.style.background = bg;
+    label.textContent = `${threatScore}/100 — ${risk}`;
+    label.style.color = bg;
+  } else {
+    threatSection.style.display = 'none';
+  }
+
+  // Properties
+  const propsEl = document.getElementById('insp-props');
+  propsEl.innerHTML = '';
+  const displayProps = { ...props };
+  delete displayProps.threat_score;
+  delete displayProps.risk_level;
+  const propKeys = Object.keys(displayProps);
+  if (propKeys.length) {
+    propKeys.slice(0, 12).forEach(k => {
+      const row = document.createElement('div');
+      row.className = 'prop-row';
+      const v = displayProps[k];
+      row.innerHTML = `<span class="prop-key">${k}</span><span class="prop-val">${Array.isArray(v) ? v.slice(0,3).join(', ') + (v.length > 3 ? ` +${v.length-3}` : '') : String(v).slice(0,60)}</span>`;
+      propsEl.appendChild(row);
+    });
+  } else {
+    propsEl.innerHTML = '<p style="font-size:11px;color:var(--text-muted)">No properties recorded</p>';
+  }
+
+  // Neighbors
+  const neighbors = node.neighborhood().nodes();
+  document.getElementById('insp-neighbor-count').textContent = neighbors.length;
+  const neighborList = document.getElementById('neighbor-list');
+  neighborList.innerHTML = '';
+  neighbors.slice(0, 15).forEach(n => {
+    const chip = document.createElement('div');
+    chip.className = 'neighbor-chip';
+    const nStyle = getStyle(n.data('entityType'));
+    chip.style.borderLeftColor = nStyle.color;
+    chip.style.borderLeftWidth = '3px';
+    chip.textContent = n.data('value');
+    chip.onclick = () => selectNode(n);
+    neighborList.appendChild(chip);
+  });
+}
+
+function clearInspector() {
+  selectedNode = null;
+  document.getElementById('inspector-placeholder').style.display = 'flex';
+  document.getElementById('inspector-content').style.display = 'none';
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Stats & UI Helpers
+// ═══════════════════════════════════════════════════════════════════
+function updateStats() {
+  document.getElementById('stat-nodes').textContent = cy.nodes().length;
+  document.getElementById('stat-edges').textContent = cy.edges().length;
+}
+
+function updateEntityBreakdown() {
+  const el = document.getElementById('entity-breakdown');
+  el.innerHTML = '';
+  Object.entries(entityCounts).sort((a,b) => b[1]-a[1]).forEach(([type, count]) => {
+    const style = getStyle(type);
+    const badge = document.createElement('div');
+    badge.className = 'entity-badge';
+    badge.style.borderLeftColor = style.color;
+    badge.innerHTML = `<span style="color:${style.color}">${style.icon} ${style.label}</span><span class="entity-badge-count" style="color:${style.color}">${count}</span>`;
+    el.appendChild(badge);
+  });
+}
+
+function logActivity(msg, level = 'info') {
+  const feed = document.getElementById('activity-feed');
+  const item = document.createElement('div');
+  item.className = `activity-item ${level}`;
+  item.textContent = msg;
+  feed.insertBefore(item, feed.firstChild);
+  while (feed.children.length > 50) feed.removeChild(feed.lastChild);
+}
+
+function setStatus(state, text) {
+  document.getElementById('status-dot').className = `${state}`;
+  document.getElementById('status-text').textContent = text;
+  const badge = document.getElementById('status-badge');
+  badge.style.borderColor = state === 'error' ? 'rgba(244,63,94,0.4)' : state === 'done' ? 'rgba(56,189,248,0.4)' : 'rgba(52,211,153,0.4)';
+}
+
+function finalize() {
+  document.getElementById('investigate-btn').disabled = false;
+  document.getElementById('progress-bar').style.width = '100%';
+  const n = cy.nodes().length, e = cy.edges().length;
+  document.getElementById('progress-label').textContent = `Complete — ${n} nodes, ${e} edges discovered`;
+  setStatus('done', `Done — ${n} nodes, ${e} edges`);
+  logActivity(`✅ Investigation complete: ${n} nodes, ${e} edges`, 'success');
+  setTimeout(() => cy.fit(undefined, 40), 400);
+}
+
+function clearGraph() {
+  if (evtSource) { evtSource.close(); evtSource = null; }
+  clearTimeout(sseReconnectTimer);
+  clearTimeout(batchFlushTimer);
+  batchBuffer = [];
+  batchFlushTimer = null;
+  cy.elements().remove();
+  Object.keys(entityCounts).forEach(k => delete entityCounts[k]);
+  transformCount = 0; currentDepth = 0;
+  updateStats(); updateEntityBreakdown();
+  clearInspector();
+  setStatus('', 'Idle');
+  document.getElementById('stat-depth').textContent = '—';
+  document.getElementById('stat-transforms').textContent = '0';
+  document.getElementById('progress-bar').style.width = '0%';
+  document.getElementById('progress-label').textContent = 'Ready — enter a seed to begin';
+  document.getElementById('activity-feed').innerHTML = '';
+  currentSessionId = null;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Context Menu
+// ═══════════════════════════════════════════════════════════════════
+function openCtxMenu(evt, node) {
+  ctxNode = node;
+  const menu = document.getElementById('ctx-menu');
+  const rendPos = evt.renderedPosition || evt.position;
+  const container = document.getElementById('cy').getBoundingClientRect();
+  menu.style.left = `${container.left + rendPos.x}px`;
+  menu.style.top  = `${container.top  + rendPos.y}px`;
+  menu.style.display = 'block';
+  evt.originalEvent?.stopPropagation();
+}
+function closeCtxMenu() { document.getElementById('ctx-menu').style.display = 'none'; }
+function runTransformOnCtxNode() { if (ctxNode) { selectNode(ctxNode); runTransformOnSelected(); } closeCtxMenu(); }
+function focusOnCtxNode()       { if (ctxNode) focusOnNode(ctxNode); closeCtxMenu(); }
+function pinCtxNode()           { if (ctxNode) ctxNode.toggleClass('pinned'); closeCtxMenu(); }
+function copyCtxUrn()           { if (ctxNode) navigator.clipboard.writeText(ctxNode.data('urn')); closeCtxMenu(); }
+function removeCtxNode()        { if (ctxNode) { ctxNode.remove(); updateStats(); } closeCtxMenu(); }
+function runTransformOnSelected() {
+  if (!selectedNode || !currentSessionId) return;
+  logActivity(`▶ Running transforms on ${selectedNode.data('value')}`, 'info');
+  // Re-investigate from this node
+  document.getElementById('seed-input').value = selectedNode.data('urn');
+  startInvestigation(new Event('submit'));
+}
+function focusOnSelected() { if (selectedNode) focusOnNode(selectedNode); }
+function focusOnNode(node) {
+  cy.elements().style('opacity', 0.1);
+  const ego = node.closedNeighborhood();
+  ego.style('opacity', 1);
+  cy.animate({ fit: { eles: ego, padding: 60 }, duration: 400, easing: 'ease-in-out-cubic' });
+}
+function copyUrn() { if (selectedNode) navigator.clipboard.writeText(selectedNode.data('urn')); }
+
+// ═══════════════════════════════════════════════════════════════════
+// Tooltip
+// ═══════════════════════════════════════════════════════════════════
+function showTooltip(evt) {
+  const data = evt.target.data();
+  const style = getStyle(data.entityType);
+  const tip = document.getElementById('tooltip');
+  tip.innerHTML = `<strong style="color:${style.color}">${style.icon} ${data.entityType}</strong><br><span style="font-family:monospace;font-size:11px">${data.value}</span>`;
+  tip.style.display = 'block';
+  document.addEventListener('mousemove', moveTooltip);
+}
+function hideTooltip() {
+  document.getElementById('tooltip').style.display = 'none';
+  document.removeEventListener('mousemove', moveTooltip);
+}
+function moveTooltip(e) {
+  const tip = document.getElementById('tooltip');
+  tip.style.left = `${e.clientX + 14}px`;
+  tip.style.top  = `${e.clientY - 8}px`;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Layout & Physics
+// ═══════════════════════════════════════════════════════════════════
+function runLayout() {
+  if (cy.nodes().length === 0) return;
+  cy.layout({
+    name: 'fcose', quality: 'proof', randomize: false, fit: true,
+    animate: true, animationDuration: 600, animationEasing: 'ease-out',
+    nodeRepulsion: () => 8000, idealEdgeLength: () => 90,
+    edgeElasticity: () => 0.45, gravity: 0.3, gravityRange: 4,
+    numIter: 5000,
+  }).run();
+}
+function togglePhysics() {
+  physicsEnabled = !physicsEnabled;
+  document.getElementById('physics-btn').style.color = physicsEnabled ? 'var(--accent)' : 'var(--text-muted)';
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Export
+// ═══════════════════════════════════════════════════════════════════
+function openExportModal()  { document.getElementById('export-modal').classList.add('open'); }
+function closeExportModal() { document.getElementById('export-modal').classList.remove('open'); }
+function doExport(format) {
+  if (!currentSessionId) {
+    logActivity('No active investigation to export', 'error');
+    closeExportModal(); return;
+  }
+  const url = `/api/v1/investigations/${currentSessionId}/export/${format}`;
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `heimdall_${currentSessionId.slice(0,8)}.${format}`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  closeExportModal();
+  logActivity(`⬇ Exporting graph as ${format.toUpperCase()}`, 'info');
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Phase 5: A* Pathfinding, Ego-Net, Grouping & Temporal Diff
+// ═══════════════════════════════════════════════════════════════════
+let pathMode = false;
+let pathSelection = [];
+
+function togglePathMode() {
+  pathMode = !pathMode;
+  pathSelection = [];
+  cy.elements().removeClass('path-node path-edge');
+  const btn = document.getElementById('path-mode-btn');
+  if (pathMode) {
+    btn.style.borderColor = '#fbbf24';
+    btn.style.color = '#fbbf24';
+    setStatus('running', 'Path Mode: Click 1st node (Source), then 2nd node (Target)');
+  } else {
+    btn.style.borderColor = '';
+    btn.style.color = '';
+    setStatus('done', 'Path mode exited');
+  }
+}
+
+function handlePathTap(node) {
+  pathSelection.push(node);
+  node.addClass('path-node');
+  if (pathSelection.length === 2) {
+    const src = pathSelection[0];
+    const tgt = pathSelection[1];
+    const aStar = cy.elements().aStar({ root: src, goal: tgt, directed: false });
+    if (aStar.found) {
+      aStar.path.edges().addClass('path-edge');
+      aStar.path.nodes().addClass('path-node');
+      logActivity(`⚡ Shortest path: ${aStar.distance} hops from ${src.data('label')} to ${tgt.data('label')}`, 'success');
+      setStatus('done', `Path found: ${aStar.distance} hops`);
+    } else {
+      logActivity(`No path found between ${src.data('label')} and ${tgt.data('label')}`, 'error');
+      setStatus('error', 'No path found between selected nodes');
+    }
+    pathMode = false;
+    document.getElementById('path-mode-btn').style.borderColor = '';
+    document.getElementById('path-mode-btn').style.color = '';
+  }
+}
+
+function onEgoRadiusChange(val) {
+  const label = document.getElementById('ego-radius-val');
+  if (!selectedNode || val >= 4) {
+    label.textContent = 'All';
+    cy.elements().removeClass('hidden-ego');
+    return;
+  }
+  const radius = parseInt(val);
+  label.textContent = `${radius} hop${radius > 1 ? 's' : ''}`;
+
+  const neighborhood = cy.elements().bfs({
+    roots: selectedNode,
+    directed: false,
+    visit: (v, e, u, i, depth) => {
+      if (depth > radius) return false;
+    }
+  });
+
+  const keep = neighborhood.path;
+  cy.elements().not(keep).addClass('hidden-ego');
+  keep.removeClass('hidden-ego');
+}
+
+let isGrouped = false;
+function toggleGroupByType() {
+  isGrouped = !isGrouped;
+  const btn = document.getElementById('group-btn');
+  if (isGrouped) {
+    btn.style.borderColor = 'var(--accent)';
+    btn.style.color = 'var(--accent)';
+    const types = new Set(cy.nodes().filter(n => !n.isParent()).map(n => n.data('entityType')));
+    cy.batch(() => {
+      types.forEach(t => {
+        const parentId = `group_${t}`;
+        if (cy.$id(parentId).length === 0) {
+          cy.add({
+            group: 'nodes',
+            data: { id: parentId, label: `${t}s`, isParentGroup: true }
+          });
+        }
+      });
+      cy.nodes().filter(n => !n.data('isParentGroup')).forEach(n => {
+        const t = n.data('entityType');
+        n.move({ parent: `group_${t}` });
+      });
+    });
+    runLayout();
+    logActivity('🗂 Nodes grouped by entity type', 'info');
+  } else {
+    btn.style.borderColor = '';
+    btn.style.color = '';
+    cy.batch(() => {
+      cy.nodes().filter(n => !n.data('isParentGroup')).forEach(n => {
+        n.move({ parent: null });
+      });
+      cy.nodes().filter(n => n.data('isParentGroup')).remove();
+    });
+    runLayout();
+    logActivity('Node grouping cleared', 'info');
+  }
+}
+
+function openDiffModal() {
+  document.getElementById('diff-modal').style.display = 'flex';
+  if (currentSessionId) {
+    document.getElementById('diff-session-b').value = currentSessionId;
+  }
+}
+
+function closeDiffModal() {
+  document.getElementById('diff-modal').style.display = 'none';
+}
+
+async function executeDiffComparison() {
+  const sessionA = document.getElementById('diff-session-a').value.trim();
+  const sessionB = document.getElementById('diff-session-b').value.trim();
+  if (!sessionA || !sessionB) {
+    alert('Please provide both Session A and Session B identifiers.');
+    return;
+  }
+  closeDiffModal();
+  logActivity(`Computing temporal diff between ${sessionA.slice(0,8)} and ${sessionB.slice(0,8)}…`, 'info');
+  try {
+    const res = await fetch(`/api/v1/diff/${sessionA}/${sessionB}`);
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || 'Diff computation failed');
+    }
+    const delta = await res.json();
+    cy.batch(() => {
+      (delta.added_nodes || []).forEach(n => {
+        const node = cy.$id(n.urn);
+        if (node.length) node.addClass('delta-added');
+      });
+      (delta.removed_nodes || []).forEach(n => {
+        const node = cy.$id(n.urn);
+        if (node.length) node.addClass('delta-removed');
+      });
+      Object.keys(delta.changed_props || {}).forEach(urn => {
+        const node = cy.$id(urn);
+        if (node.length) node.addClass('delta-changed');
+      });
+    });
+    logActivity(`Diff loaded: ${delta.summary}`, 'success');
+  } catch (err) {
+    logActivity(`Diff error: ${err.message}`, 'error');
+  }
+}
+
+// Close modals on backdrop click
+document.getElementById('export-modal')?.addEventListener('click', e => {
+  if (e.target === document.getElementById('export-modal')) closeExportModal();
+});
+document.getElementById('diff-modal')?.addEventListener('click', e => {
+  if (e.target === document.getElementById('diff-modal')) closeDiffModal();
+});
+
+// Keyboard shortcuts
+document.addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'e') { e.preventDefault(); openExportModal(); }
+  if ((e.ctrlKey || e.metaKey) && e.key === 'f') { e.preventDefault(); document.getElementById('seed-input').focus(); }
+  if (e.key === 'Escape') { closeExportModal(); closeDiffModal(); closeCtxMenu(); }
+  if (e.key === 'Delete' && selectedNode) { selectedNode.remove(); updateStats(); clearInspector(); }
+});
+</script>
+</body>
+</html>

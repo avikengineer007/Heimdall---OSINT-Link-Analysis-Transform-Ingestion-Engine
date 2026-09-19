@@ -1,0 +1,45 @@
+# Heimdall Smart Pivot Agent Priority Rules
+# Evaluated by PivotAgent to rank transforms dynamically per entity
+rules:
+  - id: mail_port_priority
+    entity_type: PortService
+    description: "Mail ports 25, 465, 587 trigger immediate MX security assessment"
+    ports: [25, 465, 587, 110, 143]
+    preferred_transforms: ["mx_security"]
+    boost: 10
+
+  - id: multi_port_ipv4
+    entity_type: IPv4
+    description: "IPv4 with multiple open ports prioritizes abuse check and Shodan enrichment"
+    min_ports: 3
+    preferred_transforms: ["abuseipdb_check", "shodan_host_enrichment"]
+    boost: 8
+
+  - id: wildcard_subdomain
+    entity_type: Domain
+    description: "Subdomains prioritize DNS resolution and Web Surface before recursion"
+    preferred_transforms: ["dns_resolve", "web_surface"]
+    boost: 6
+
+  - id: asn_bgp_priority
+    entity_type: ASNumber
+    description: "ASN nodes prioritize BGP routing"
+    preferred_transforms: ["bgp_routing"]
+    boost: 9
+
+  - id: email_reverse_whois
+    entity_type: Email
+    description: "Email indicators prioritize reverse whois search"
+    preferred_transforms: ["reverse_whois"]
+    boost: 7
+
+  - id: cdn_ip_suppression
+    entity_type: IPv4
+    description: "Suppress heavy infrastructure scans on major shared CDNs"
+    cdn_orgs:
+      - Cloudflare
+      - Fastly
+      - Akamai
+      - Incapsula
+    suppressed_transforms: ["crtsh_subdomain", "shodan_host_enrichment", "tls_cert_extract"]
+    boost: -5
