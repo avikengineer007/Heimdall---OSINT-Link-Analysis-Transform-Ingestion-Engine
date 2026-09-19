@@ -163,34 +163,38 @@ class PipelineOrchestrator:
             if not tasks:
                 break
 
+            lock = asyncio.Lock()
+
             # Execute transform tasks concurrently
             async def _run_task(u: str, t: Any) -> TransformResult:
-                res = await t.run_safe(u, self.transport, **transform_kwargs)
-                await self._emit_event(
-                    "TRANSFORM_COMPLETED",
-                    {
-                        "transform": t.name,
-                        "entity": u,
-                        "edges_count": len(res.edges),
-                        "status": res.status,
-                    },
-                )
-                return res
+                try:
+                    res = await t.run_safe(u, self.transport, **transform_kwargs)
+                    await self._emit_event(
+                        "TRANSFORM_COMPLETED",
+                        {
+                            "transform": t.name,
+                            "entity": u,
+                            "edges_count": len(res.edges),
+                            "status": res.status,
+                        },
+                    )
+                    if res.status == "SUCCESS" and res.edges:
+                        self.store.add_edges(res.edges)
+                        for edge in res.edges:
+                            await self._emit_event("EDGE_DISCOVERED", edge.to_contract_dict())
+                            async with lock:
+                                if edge.target not in session.visited_urns:
+                                    next_frontier.add(edge.target)
+                                    session.visited_urns.add(edge.target)
+                    return res
+                except Exception as exc:
+                    logger.error(f"Error running transform {t.name} on {u}: {exc}")
+                    return TransformResult(transform_name=t.name, input_entity=u, status="FAILED", error=str(exc))
 
             results: List[TransformResult] = await asyncio.gather(
                 *[_run_task(u, t) for u, t in tasks],
                 return_exceptions=False,
             )
-
-            # Ingest edges into graph store and populate next frontier
-            for res in results:
-                if res.status == "SUCCESS" and res.edges:
-                    self.store.add_edges(res.edges)
-                    for edge in res.edges:
-                        await self._emit_event("EDGE_DISCOVERED", edge.to_contract_dict())
-                        if edge.target not in session.visited_urns:
-                            next_frontier.add(edge.target)
-                            session.visited_urns.add(edge.target)
 
             current_frontier = next_frontier
 

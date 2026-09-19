@@ -22,7 +22,7 @@ class ResilientAsyncTransport:
     def __init__(
         self,
         client: Optional[httpx.AsyncClient] = None,
-        max_concurrency: int = 8,
+        max_concurrency: int = 20,
         default_timeout: float = 5.0,
         max_retries: int = 3,
         base_delay: float = 0.5,
@@ -44,7 +44,7 @@ class ResilientAsyncTransport:
                 timeout=httpx.Timeout(self.default_timeout, connect=3.0),
                 follow_redirects=True,
                 headers={"User-Agent": self.user_agent, "Accept-Encoding": "gzip, deflate"},
-                limits=httpx.Limits(max_keepalive_connections=20, max_connections=50),
+                limits=httpx.Limits(max_keepalive_connections=50, max_connections=100),
             )
         return self._client
 

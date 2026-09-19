@@ -1,1332 +1,2652 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Heimdall OSINT Engine — Graph Dashboard</title>
-  <meta name="description" content="Interactive OSINT link-analysis graph dashboard. Discover domains, IPs, emails, certificates, and threat intelligence in real-time." />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HEIMDALL // Autonomous OSINT & Threat Link Intelligence</title>
+  
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;900&family=JetBrains+Mono:wght@300;400;500;700&family=Plus+Jakarta+Sans:wght@300;400;600;700&display=swap" rel="stylesheet">
+  
+  <!-- Three.js CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <!-- Cytoscape.js core -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.28.1/cytoscape.min.js"></script>
-  <!-- fcose layout — Fast Compound Spring Embedder, handles incremental additions gracefully -->
+  <!-- fcose layout engine -->
   <script src="https://unpkg.com/layout-base/layout-base.js"></script>
   <script src="https://unpkg.com/cose-base/cose-base.js"></script>
   <script src="https://unpkg.com/cytoscape-fcose/cytoscape-fcose.js"></script>
+
   <style>
-    /* ── Reset & Tokens ─────────────────────────────────────────────── */
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
-      --bg-base:     #0a0f1a;
-      --bg-panel:    rgba(15, 23, 42, 0.85);
-      --bg-card:     rgba(20, 30, 55, 0.70);
-      --bg-hover:    rgba(56, 189, 248, 0.08);
-      --border:      rgba(56, 189, 248, 0.15);
-      --border-glow: rgba(56, 189, 248, 0.40);
-      --accent:      #38bdf8;
-      --accent-dim:  #0ea5e9;
-      --text-primary:   #e2e8f0;
-      --text-secondary: #94a3b8;
-      --text-muted:     #475569;
+      --bg-base: #050507;
+      --bg-surface: rgba(18, 18, 24, 0.82);
+      --bg-card: rgba(24, 24, 32, 0.72);
+      --border-subtle: rgba(255, 255, 255, 0.08);
+      --border-accent: rgba(255, 59, 48, 0.35);
+      
+      --red-primary: #FF2A3B;
+      --red-glow: rgba(255, 42, 59, 0.45);
+      --orange-accent: #FF7300;
+      --orange-glow: rgba(255, 115, 0, 0.4);
+      --cyan-accent: #38bdf8;
+      
+      --text-pure: #FFFFFF;
+      --text-muted: #8E8E9F;
+      --text-dim: #4B4B5A;
+      
+      --font-display: 'Cinzel', serif;
+      --font-sans: 'Plus Jakarta Sans', sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
 
       /* Entity type colors */
-      --c-domain:    #38bdf8;   /* cyan */
-      --c-ip:        #fbbf24;   /* amber */
-      --c-port:      #f43f5e;   /* ruby */
-      --c-threat:    #ef4444;   /* red */
-      --c-email:     #c084fc;   /* purple */
-      --c-org:       #a78bfa;   /* violet */
-      --c-asn:       #34d399;   /* emerald */
-      --c-cidr:      #6ee7b7;   /* light emerald */
-      --c-ssl:       #67e8f9;   /* sky */
-      --c-url:       #fb923c;   /* orange */
-      --c-dmarc:     #e879f9;   /* fuchsia */
+      --c-domain:    #38bdf8;
+      --c-subdomain: #7dd3fc;
+      --c-ip:        #fbbf24;
+      --c-port:      #f43f5e;
+      --c-threat:    #ff2a3b;
+      --c-email:     #c084fc;
+      --c-org:       #a78bfa;
+      --c-asn:       #34d399;
+      --c-cidr:      #6ee7b7;
+      --c-ssl:       #67e8f9;
+      --c-url:       #ff7300;
+      --c-dmarc:     #e879f9;
 
-      --radius: 12px;
-      --radius-sm: 8px;
-      --transition: 0.18s ease;
-      --glass: blur(14px) saturate(1.4);
+      --radius-sm: 6px;
+      --radius-md: 10px;
+      --transition: 0.2s cubic-bezier(0.16, 1, 0.3, 1);
     }
 
-    html, body { width: 100%; height: 100%; background: var(--bg-base); color: var(--text-primary); font-family: 'Inter', sans-serif; overflow: hidden; }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      scroll-behavior: smooth;
+    }
 
-    /* ── Layout ─────────────────────────────────────────────────────── */
-    #app { display: grid; grid-template-rows: 60px 1fr; grid-template-columns: 320px 1fr 320px; height: 100vh; }
+    html, body {
+      width: 100%;
+      height: 100%;
+      background-color: var(--bg-base);
+      color: var(--text-pure);
+      font-family: var(--font-sans);
+      overflow-x: hidden;
+      line-height: 1.6;
+      selection-background-color: var(--red-primary);
+      selection-color: #fff;
+    }
 
-    /* ── Topbar ─────────────────────────────────────────────────────── */
-    #topbar {
-      grid-column: 1 / -1;
-      display: flex; align-items: center; gap: 16px; padding: 0 20px;
-      background: var(--bg-panel);
-      backdrop-filter: var(--glass);
-      border-bottom: 1px solid var(--border);
+    /* Ambient noise & grid overlays */
+    .cyber-grid {
+      position: fixed;
+      inset: 0;
+      background-image: 
+        linear-gradient(to right, rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+      background-size: 60px 60px;
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    .vignette {
+      position: fixed;
+      inset: 0;
+      background: radial-gradient(circle at center, transparent 35%, rgba(5, 5, 7, 0.94) 100%);
+      pointer-events: none;
+      z-index: 2;
+    }
+
+    /* 3D Canvas Background */
+    #canvas-container {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      z-index: 0;
+      pointer-events: auto;
+      transition: opacity 0.5s ease;
+    }
+
+    /* Top Glass Navigation */
+    header {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
       z-index: 100;
-    }
-    #logo { display: flex; align-items: center; gap: 10px; text-decoration: none; flex-shrink: 0; }
-    #logo svg { width: 28px; height: 28px; }
-    #logo-text { font-size: 18px; font-weight: 700; background: linear-gradient(135deg, var(--accent), #818cf8); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-
-    #seed-form { display: flex; align-items: center; gap: 8px; flex: 1; }
-    #seed-input {
-      flex: 1; height: 36px; padding: 0 14px;
-      background: rgba(255,255,255,0.05); border: 1px solid var(--border);
-      border-radius: var(--radius-sm); color: var(--text-primary);
-      font-family: 'JetBrains Mono', monospace; font-size: 13px;
-      transition: border-color var(--transition);
-      outline: none;
-    }
-    #seed-input::placeholder { color: var(--text-muted); }
-    #seed-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(56,189,248,0.15); }
-
-    #depth-select {
-      width: 80px; height: 36px; padding: 0 10px;
-      background: rgba(255,255,255,0.05); border: 1px solid var(--border);
-      border-radius: var(--radius-sm); color: var(--text-primary); font-size: 13px;
-      outline: none; cursor: pointer;
-    }
-    #depth-select:focus { border-color: var(--accent); }
-
-    .btn {
-      height: 36px; padding: 0 18px; border-radius: var(--radius-sm);
-      font-size: 13px; font-weight: 600; cursor: pointer; border: none;
-      transition: all var(--transition); white-space: nowrap;
-    }
-    .btn-primary {
-      background: linear-gradient(135deg, var(--accent), var(--accent-dim));
-      color: #0a0f1a;
-    }
-    .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 4px 16px rgba(56,189,248,0.35); }
-    .btn-primary:disabled { opacity: 0.45; transform: none; cursor: not-allowed; }
-    .btn-ghost {
-      background: transparent; border: 1px solid var(--border);
-      color: var(--text-secondary);
-    }
-    .btn-ghost:hover { border-color: var(--accent); color: var(--accent); }
-
-    #topbar-actions { display: flex; gap: 8px; margin-left: auto; }
-
-    /* ── Left Sidebar — Stats ───────────────────────────────────────── */
-    #sidebar-left {
-      background: var(--bg-panel);
-      backdrop-filter: var(--glass);
-      border-right: 1px solid var(--border);
-      overflow-y: auto;
-      padding: 16px;
-      display: flex; flex-direction: column; gap: 16px;
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      background: rgba(5, 5, 7, 0.82);
+      border-bottom: 1px solid var(--border-subtle);
     }
 
-    .panel-title {
-      font-size: 11px; font-weight: 600; letter-spacing: 0.12em;
-      text-transform: uppercase; color: var(--text-muted);
-      padding-bottom: 8px; border-bottom: 1px solid var(--border);
+    .nav-container {
+      max-width: 1600px;
+      margin: 0 auto;
+      padding: 0.9rem 2rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 1.5rem;
     }
 
-    .stat-card {
-      background: var(--bg-card); border: 1px solid var(--border);
-      border-radius: var(--radius-sm); padding: 12px 14px;
-      display: flex; flex-direction: column; gap: 4px;
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 0.85rem;
+      text-decoration: none;
+      flex-shrink: 0;
     }
-    .stat-value { font-size: 28px; font-weight: 700; color: var(--accent); line-height: 1; }
-    .stat-label { font-size: 11px; color: var(--text-muted); }
 
-    .stat-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-
-    #entity-breakdown { display: flex; flex-direction: column; gap: 4px; }
-    .entity-badge {
-      display: flex; align-items: center; justify-content: space-between;
-      padding: 6px 10px; border-radius: 6px; font-size: 12px;
-      background: rgba(255,255,255,0.04);
-      border-left: 3px solid transparent;
+    .brand-mark {
+      width: 26px;
+      height: 26px;
+      border: 2px solid var(--red-primary);
+      position: relative;
+      transform: rotate(45deg);
+      box-shadow: 0 0 15px var(--red-glow);
     }
-    .entity-badge-count { font-weight: 600; font-family: 'JetBrains Mono', monospace; font-size: 11px; }
 
-    /* Progress bar for investigation */
-    #progress-section { display: flex; flex-direction: column; gap: 8px; }
-    #progress-bar-wrap { height: 4px; background: rgba(255,255,255,0.06); border-radius: 2px; overflow: hidden; }
-    #progress-bar { height: 100%; background: linear-gradient(90deg, var(--accent), #818cf8); width: 0%; transition: width 0.4s ease; border-radius: 2px; }
-    #progress-label { font-size: 11px; color: var(--text-muted); }
-
-    /* Activity feed */
-    #activity-feed { display: flex; flex-direction: column; gap: 4px; max-height: 300px; overflow-y: auto; }
-    .activity-item {
-      font-size: 11px; color: var(--text-secondary);
-      padding: 5px 8px; border-radius: 4px; border-left: 2px solid var(--border);
-      background: rgba(255,255,255,0.02);
-      font-family: 'JetBrains Mono', monospace;
-      word-break: break-all;
+    .brand-mark::after {
+      content: '';
+      position: absolute;
+      inset: 3px;
+      background: var(--orange-accent);
+      box-shadow: 0 0 10px var(--orange-glow);
     }
-    .activity-item.success { border-left-color: #34d399; }
-    .activity-item.error   { border-left-color: #f43f5e; }
-    .activity-item.info    { border-left-color: var(--accent); }
 
-    /* ── Canvas ─────────────────────────────────────────────────────── */
-    #cy-container { position: relative; background: radial-gradient(ellipse at 30% 40%, rgba(56,189,248,0.04) 0%, transparent 60%), radial-gradient(ellipse at 70% 70%, rgba(129,140,248,0.04) 0%, transparent 60%), var(--bg-base); }
-    #cy { width: 100%; height: 100%; }
-
-    #canvas-toolbar {
-      position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%);
-      display: flex; gap: 8px;
-      background: var(--bg-panel); backdrop-filter: var(--glass);
-      border: 1px solid var(--border); border-radius: var(--radius);
-      padding: 8px 12px;
+    .brand-text {
+      font-family: var(--font-display);
+      font-weight: 900;
+      font-size: 1.35rem;
+      letter-spacing: 0.25em;
+      color: var(--text-pure);
+      text-transform: uppercase;
     }
-    .canvas-btn {
-      width: 32px; height: 32px; border-radius: 6px; border: 1px solid var(--border);
-      background: transparent; color: var(--text-secondary);
-      cursor: pointer; display: flex; align-items: center; justify-content: center;
-      font-size: 16px; transition: all var(--transition);
-    }
-    .canvas-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--bg-hover); }
 
-    #status-badge {
-      position: absolute; top: 14px; left: 50%; transform: translateX(-50%);
-      background: var(--bg-panel); backdrop-filter: var(--glass);
-      border: 1px solid var(--border); border-radius: 20px;
-      padding: 6px 16px; font-size: 12px; color: var(--text-secondary);
-      display: flex; align-items: center; gap: 8px;
+    .brand-sub {
+      font-family: var(--font-mono);
+      font-size: 0.62rem;
+      color: var(--orange-accent);
+      letter-spacing: 0.15em;
+    }
+
+    /* View Switcher Pills */
+    .view-switcher {
+      display: flex;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-sm);
+      padding: 3px;
+      gap: 3px;
+    }
+
+    .view-pill {
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      padding: 0.4rem 0.9rem;
+      color: var(--text-muted);
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      border-radius: 4px;
+      transition: all var(--transition);
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+
+    .view-pill:hover {
+      color: var(--text-pure);
+    }
+
+    .view-pill.active {
+      color: #FFF;
+      background: rgba(255, 42, 59, 0.25);
+      border: 1px solid var(--red-primary);
+      box-shadow: 0 0 12px var(--red-glow);
+    }
+
+    nav ul {
+      display: flex;
+      list-style: none;
+      gap: 2rem;
+    }
+
+    nav a {
+      font-family: var(--font-mono);
+      font-size: 0.76rem;
+      text-transform: uppercase;
+      letter-spacing: 0.15em;
+      color: var(--text-muted);
+      text-decoration: none;
       transition: all 0.3s ease;
+      position: relative;
     }
-    #status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-muted); transition: background 0.3s; }
-    #status-dot.running { background: #34d399; animation: pulse 1.4s infinite; }
-    #status-dot.error   { background: #f43f5e; }
-    #status-dot.done    { background: var(--accent); }
-    @keyframes pulse { 0%,100%{ opacity:1 } 50%{ opacity:0.4 } }
 
-    /* Context menu */
-    #ctx-menu {
-      position: fixed; z-index: 200; min-width: 180px;
-      background: var(--bg-panel); backdrop-filter: var(--glass);
-      border: 1px solid var(--border); border-radius: var(--radius-sm);
-      padding: 6px 0; display: none; box-shadow: 0 12px 40px rgba(0,0,0,0.6);
+    nav a:hover {
+      color: var(--text-pure);
+      text-shadow: 0 0 8px rgba(255, 255, 255, 0.5);
     }
-    .ctx-item {
-      padding: 8px 16px; font-size: 13px; color: var(--text-secondary);
-      cursor: pointer; display: flex; align-items: center; gap: 8px;
+
+    nav a::after {
+      content: '';
+      position: absolute;
+      bottom: -6px;
+      left: 0;
+      width: 0;
+      height: 2px;
+      background: linear-gradient(90deg, var(--red-primary), var(--orange-accent));
+      transition: width 0.3s ease;
+    }
+
+    nav a:hover::after {
+      width: 100%;
+    }
+
+    .nav-actions {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    /* Buttons */
+    .btn-lux {
+      position: relative;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      padding: 0.75rem 1.6rem;
+      color: var(--text-pure);
+      background: transparent;
+      border: 1px solid var(--border-subtle);
+      cursor: pointer;
+      overflow: hidden;
+      transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      border-radius: var(--radius-sm);
+    }
+
+    .btn-lux::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.15), transparent);
+      transition: left 0.6s ease;
+    }
+
+    .btn-lux:hover::before {
+      left: 100%;
+    }
+
+    .btn-primary {
+      border-color: var(--red-primary);
+      background: rgba(255, 42, 59, 0.12);
+      box-shadow: 0 0 20px rgba(255, 42, 59, 0.15), inset 0 0 12px rgba(255, 42, 59, 0.1);
+    }
+
+    .btn-primary:hover {
+      background: var(--red-primary);
+      box-shadow: 0 0 35px var(--red-glow);
+      transform: translateY(-2px);
+      color: #fff;
+    }
+
+    .btn-orange {
+      border-color: var(--orange-accent);
+      background: rgba(255, 115, 0, 0.1);
+      box-shadow: 0 0 20px rgba(255, 115, 0, 0.15);
+    }
+
+    .btn-orange:hover {
+      background: var(--orange-accent);
+      box-shadow: 0 0 35px var(--orange-glow);
+      color: #000;
+      transform: translateY(-2px);
+    }
+
+    .btn-ghost {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-muted);
+    }
+    .btn-ghost:hover {
+      border-color: var(--text-pure);
+      color: var(--text-pure);
+    }
+
+    /* ═══ VIEW CONTAINERS ═══════════════════════════════════════════════ */
+    #view-radar {
+      display: block;
+      position: relative;
+      z-index: 10;
+      min-height: 100vh;
+    }
+
+    #view-workbench {
+      display: none;
+      position: fixed;
+      top: 65px;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 50;
+      background: var(--bg-base);
+    }
+
+    /* ═══ HERO SECTION ══════════════════════════════════════════════════ */
+    .content-layer {
+      position: relative;
+      z-index: 10;
+      max-width: 1440px;
+      margin: 0 auto;
+      padding: 0 2rem;
+    }
+
+    .hero {
+      min-height: 94vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding-top: 6rem;
+      position: relative;
+    }
+
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.6rem;
+      padding: 0.4rem 1rem;
+      border: 1px solid rgba(255, 115, 0, 0.3);
+      background: rgba(255, 115, 0, 0.05);
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      letter-spacing: 0.2em;
+      color: var(--orange-accent);
+      text-transform: uppercase;
+      margin-bottom: 2rem;
+      width: fit-content;
+      backdrop-filter: blur(8px);
+      border-radius: 4px;
+    }
+
+    .pulse-dot {
+      width: 7px;
+      height: 7px;
+      background: var(--red-primary);
+      border-radius: 50%;
+      box-shadow: 0 0 8px var(--red-primary);
+      animation: pulse 1.8s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.6); opacity: 0.4; }
+    }
+
+    .hero-title {
+      font-family: var(--font-display);
+      font-size: clamp(2.8rem, 6.2vw, 5.8rem);
+      font-weight: 900;
+      line-height: 1.05;
+      letter-spacing: 0.04em;
+      margin-bottom: 1.5rem;
+      max-width: 950px;
+    }
+
+    .hero-title span.accent {
+      background: linear-gradient(135deg, #FFF 20%, var(--orange-accent) 60%, var(--red-primary) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      text-shadow: 0 0 30px rgba(255, 42, 59, 0.3);
+    }
+
+    .hero-desc {
+      font-size: 1.15rem;
+      color: var(--text-muted);
+      max-width: 650px;
+      font-weight: 300;
+      line-height: 1.8;
+      margin-bottom: 2.2rem;
+    }
+
+    /* Fast Seed Launcher Form */
+    .hero-seed-box {
+      max-width: 720px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-left: 4px solid var(--red-primary);
+      backdrop-filter: blur(25px);
+      padding: 1.25rem 1.5rem;
+      box-shadow: 0 20px 50px rgba(0,0,0,0.8), 0 0 30px rgba(255, 42, 59, 0.1);
+      border-radius: var(--radius-sm);
+      margin-bottom: 1.5rem;
+    }
+
+    .hero-seed-row {
+      display: flex;
+      gap: 0.85rem;
+      align-items: center;
+    }
+
+    .hero-input {
+      flex: 1;
+      height: 46px;
+      background: rgba(0, 0, 0, 0.5);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-sm);
+      padding: 0 1.1rem;
+      color: #FFF;
+      font-family: var(--font-mono);
+      font-size: 0.88rem;
+      outline: none;
       transition: all var(--transition);
     }
-    .ctx-item:hover { background: var(--bg-hover); color: var(--accent); }
-    .ctx-divider { height: 1px; background: var(--border); margin: 4px 0; }
 
-    /* ── Right Sidebar — Node Inspector ─────────────────────────────── */
-    #sidebar-right {
-      background: var(--bg-panel);
-      backdrop-filter: var(--glass);
-      border-left: 1px solid var(--border);
-      overflow-y: auto; padding: 16px;
-      display: flex; flex-direction: column; gap: 16px;
+    .hero-input:focus {
+      border-color: var(--red-primary);
+      box-shadow: 0 0 0 3px rgba(255, 42, 59, 0.2);
+    }
+
+    .hero-select {
+      height: 46px;
+      padding: 0 1rem;
+      background: rgba(0, 0, 0, 0.5);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-sm);
+      color: var(--orange-accent);
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      outline: none;
+      cursor: pointer;
+    }
+
+    .hero-select:focus {
+      border-color: var(--orange-accent);
+    }
+
+    .quick-chips {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      margin-top: 0.85rem;
+      flex-wrap: wrap;
+    }
+
+    .chip-label {
+      font-family: var(--font-mono);
+      font-size: 0.65rem;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+    }
+
+    .seed-chip {
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      padding: 0.25rem 0.6rem;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--border-subtle);
+      border-radius: 4px;
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: all var(--transition);
+    }
+
+    .seed-chip:hover {
+      background: rgba(255, 42, 59, 0.15);
+      border-color: var(--red-primary);
+      color: #FFF;
+    }
+
+    /* Live HUD Terminal Component */
+    .hud-console {
+      position: absolute;
+      right: 0;
+      top: 50%;
+      transform: translateY(-40%);
+      width: 440px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-left: 3px solid var(--red-primary);
+      backdrop-filter: blur(25px);
+      box-shadow: 0 20px 50px rgba(0,0,0,0.8), 0 0 30px rgba(255, 42, 59, 0.1);
+      padding: 1.5rem;
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
+      border-radius: var(--radius-sm);
+    }
+
+    .hud-header {
+      display: flex;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--border-subtle);
+      padding-bottom: 0.75rem;
+      margin-bottom: 1rem;
+      color: var(--text-muted);
+      font-size: 0.7rem;
+      letter-spacing: 0.1em;
+    }
+
+    .hud-stream {
+      display: flex;
+      flex-direction: column;
+      gap: 0.65rem;
+      max-height: 240px;
+      overflow: hidden;
+    }
+
+    .hud-row {
+      display: flex;
+      gap: 0.75rem;
+      opacity: 0.9;
+      font-size: 0.74rem;
+      animation: fadeIn 0.3s ease;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(-4px); }
+      to { opacity: 0.9; transform: translateY(0); }
+    }
+
+    .hud-row .ts { color: var(--text-dim); flex-shrink: 0; }
+    .hud-row .lvl-crit { color: var(--red-primary); font-weight: 700; flex-shrink: 0; }
+    .hud-row .lvl-warn { color: var(--orange-accent); flex-shrink: 0; }
+    .hud-row .lvl-ok { color: #34d399; flex-shrink: 0; }
+    .hud-row .val { color: var(--text-pure); word-break: break-all; }
+
+    /* Bento Grid Metrics */
+    .section-title-wrap {
+      margin-bottom: 3.5rem;
+      position: relative;
+    }
+
+    .section-tag {
+      font-family: var(--font-mono);
+      color: var(--red-primary);
+      font-size: 0.8rem;
+      letter-spacing: 0.25em;
+      text-transform: uppercase;
+      display: block;
+      margin-bottom: 0.5rem;
+    }
+
+    .section-title {
+      font-family: var(--font-display);
+      font-size: 2.8rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+    }
+
+    .bento-grid {
+      display: grid;
+      grid-template-columns: repeat(12, 1fr);
+      gap: 1.75rem;
+      margin-bottom: 8rem;
+    }
+
+    .bento-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      backdrop-filter: blur(15px);
+      padding: 2.2rem;
+      position: relative;
+      overflow: hidden;
+      transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+      border-radius: var(--radius-sm);
+    }
+
+    .bento-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, var(--border-subtle), transparent);
+      transition: all 0.4s ease;
+    }
+
+    .bento-card:hover {
+      border-color: rgba(255, 42, 59, 0.35);
+      transform: translateY(-4px);
+      box-shadow: 0 15px 40px rgba(0,0,0,0.6), 0 0 25px rgba(255, 42, 59, 0.1);
+    }
+
+    .bento-card:hover::before {
+      background: linear-gradient(90deg, var(--red-primary), var(--orange-accent));
+    }
+
+    .card-col-8 { grid-column: span 8; }
+    .card-col-4 { grid-column: span 4; }
+    .card-col-6 { grid-column: span 6; }
+    .card-col-12 { grid-column: span 12; }
+
+    .card-metric {
+      font-family: var(--font-display);
+      font-size: 3.2rem;
+      font-weight: 900;
+      color: #FFF;
+      line-height: 1;
+      margin-bottom: 0.75rem;
+      display: flex;
+      align-items: baseline;
+      gap: 0.5rem;
+    }
+
+    .card-metric .accent-sym {
+      color: var(--red-primary);
+      font-size: 2rem;
+    }
+
+    .card-label {
+      font-family: var(--font-mono);
+      font-size: 0.82rem;
+      color: var(--orange-accent);
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      margin-bottom: 0.75rem;
+    }
+
+    .card-desc {
+      color: var(--text-muted);
+      font-size: 0.92rem;
+      line-height: 1.7;
+    }
+
+    /* Interactive Graph Controller Panel */
+    .controls-strip {
+      position: fixed;
+      bottom: 2rem;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 90;
+      background: rgba(10, 10, 15, 0.88);
+      border: 1px solid var(--border-subtle);
+      border-bottom: 2px solid var(--orange-accent);
+      backdrop-filter: blur(20px);
+      padding: 0.7rem 1.8rem;
+      display: flex;
+      align-items: center;
+      gap: 1.5rem;
+      border-radius: 4px;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.8);
+    }
+
+    .controls-strip .ctl-label {
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+    }
+
+    .mode-pill {
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      color: #FFF;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border-subtle);
+      padding: 0.4rem 0.9rem;
+      cursor: pointer;
+      transition: all 0.25s ease;
+      border-radius: 4px;
+    }
+
+    .mode-pill.active {
+      background: var(--red-primary);
+      border-color: var(--red-primary);
+      box-shadow: 0 0 15px var(--red-glow);
+    }
+
+    /* ═══ INVESTIGATION WORKBENCH (CYTOSCAPE UI) ══════════════════════════ */
+    .workbench-layout {
+      display: grid;
+      grid-template-columns: 320px 1fr 340px;
+      height: 100%;
+      width: 100%;
+    }
+
+    /* Left Sidebar: Telemetry & Metrics */
+    .workbench-sidebar-left {
+      background: var(--bg-surface);
+      border-right: 1px solid var(--border-subtle);
+      backdrop-filter: blur(20px);
+      padding: 1.25rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+      overflow-y: auto;
+    }
+
+    .wb-panel-title {
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--orange-accent);
+      padding-bottom: 0.4rem;
+      border-bottom: 1px solid var(--border-subtle);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .wb-stat-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.75rem;
+    }
+
+    .wb-stat-card {
+      background: rgba(0, 0, 0, 0.4);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-sm);
+      padding: 0.85rem 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+    }
+
+    .wb-stat-val {
+      font-family: var(--font-display);
+      font-size: 1.8rem;
+      font-weight: 700;
+      color: #FFF;
+      line-height: 1.1;
+    }
+
+    .wb-stat-lbl {
+      font-family: var(--font-mono);
+      font-size: 0.65rem;
+      color: var(--text-muted);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    /* Progress bar */
+    .wb-progress-box {
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+    }
+
+    .wb-progress-track {
+      height: 4px;
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+
+    .wb-progress-bar {
+      height: 100%;
+      background: linear-gradient(90deg, var(--red-primary), var(--orange-accent));
+      width: 0%;
+      transition: width 0.3s ease;
+    }
+
+    .wb-progress-lbl {
+      font-family: var(--font-mono);
+      font-size: 0.68rem;
+      color: var(--text-muted);
+    }
+
+    /* Entity breakdown list */
+    #entity-breakdown {
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+
+    .entity-badge {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.45rem 0.75rem;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      font-family: var(--font-mono);
+      background: rgba(255, 255, 255, 0.03);
+      border-left: 3px solid transparent;
+    }
+
+    .entity-badge-count {
+      font-weight: 700;
+    }
+
+    /* Activity log */
+    #activity-feed {
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+      max-height: 220px;
+      overflow-y: auto;
+    }
+
+    .activity-item {
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      padding: 0.35rem 0.6rem;
+      border-radius: 4px;
+      border-left: 2px solid var(--border-subtle);
+      background: rgba(0, 0, 0, 0.3);
+      font-family: var(--font-mono);
+      word-break: break-all;
+    }
+
+    .activity-item.success { border-left-color: #34d399; color: var(--text-pure); }
+    .activity-item.error   { border-left-color: var(--red-primary); }
+    .activity-item.info    { border-left-color: var(--orange-accent); }
+
+    /* Center: Cytoscape Graph Canvas */
+    .workbench-center {
+      position: relative;
+      background: 
+        radial-gradient(circle at 40% 40%, rgba(255, 42, 59, 0.05) 0%, transparent 65%),
+        radial-gradient(circle at 75% 75%, rgba(255, 115, 0, 0.04) 0%, transparent 60%),
+        #050507;
+      overflow: hidden;
+    }
+
+    #cy {
+      width: 100%;
+      height: 100%;
+    }
+
+    /* Floating Status Badge */
+    #status-badge {
+      position: absolute;
+      top: 1.25rem;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(10, 10, 15, 0.85);
+      border: 1px solid var(--border-subtle);
+      backdrop-filter: blur(15px);
+      border-radius: 20px;
+      padding: 0.45rem 1.2rem;
+      font-family: var(--font-mono);
+      font-size: 0.74rem;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      z-index: 10;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.6);
+    }
+
+    #status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--text-dim);
+    }
+    #status-dot.running { background: var(--red-primary); animation: pulse 1.4s infinite; }
+    #status-dot.done { background: #34d399; }
+    #status-dot.error { background: #dc2626; }
+
+    /* Floating Canvas Toolbar */
+    #canvas-toolbar {
+      position: absolute;
+      bottom: 1.5rem;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 0.5rem;
+      background: rgba(10, 10, 15, 0.9);
+      backdrop-filter: blur(20px);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-sm);
+      padding: 0.4rem 0.6rem;
+      z-index: 10;
+      box-shadow: 0 8px 30px rgba(0,0,0,0.8);
+    }
+
+    .canvas-btn {
+      width: 34px;
+      height: 34px;
+      border-radius: 4px;
+      border: 1px solid var(--border-subtle);
+      background: transparent;
+      color: var(--text-muted);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--font-mono);
+      font-size: 0.9rem;
+      transition: all var(--transition);
+    }
+
+    .canvas-btn:hover {
+      border-color: var(--red-primary);
+      color: #FFF;
+      background: rgba(255, 42, 59, 0.15);
+    }
+
+    /* Right Sidebar: Node Inspector */
+    .workbench-sidebar-right {
+      background: var(--bg-surface);
+      border-left: 1px solid var(--border-subtle);
+      backdrop-filter: blur(20px);
+      padding: 1.25rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+      overflow-y: auto;
     }
 
     #inspector-placeholder {
-      display: flex; flex-direction: column; align-items: center; justify-content: center;
-      flex: 1; gap: 12px; color: var(--text-muted); text-align: center; padding: 40px 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      flex: 1;
+      gap: 1rem;
+      color: var(--text-dim);
+      text-align: center;
+      padding: 2.5rem 1rem;
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
     }
-    #inspector-placeholder svg { opacity: 0.3; }
-    #inspector-placeholder p { font-size: 12px; line-height: 1.6; }
 
-    #inspector-content { display: none; flex-direction: column; gap: 12px; }
+    #inspector-content {
+      display: none;
+      flex-direction: column;
+      gap: 1rem;
+    }
 
     .inspector-header {
-      display: flex; align-items: flex-start; gap: 12px;
-      padding-bottom: 12px; border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: flex-start;
+      gap: 0.85rem;
+      padding-bottom: 0.85rem;
+      border-bottom: 1px solid var(--border-subtle);
     }
+
     .inspector-icon {
-      width: 40px; height: 40px; border-radius: 10px;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 18px; flex-shrink: 0;
-    }
-    .inspector-meta h3 { font-size: 14px; font-weight: 600; word-break: break-all; }
-    .inspector-meta .type-tag {
-      display: inline-block; margin-top: 4px; padding: 2px 8px;
-      border-radius: 4px; font-size: 10px; font-weight: 600; letter-spacing: 0.08em;
+      width: 42px;
+      height: 42px;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.2rem;
+      flex-shrink: 0;
     }
 
-    .inspector-section h4 { font-size: 11px; font-weight: 600; color: var(--text-muted); letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 8px; }
-    .prop-row { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid rgba(255,255,255,0.04); font-size: 12px; gap: 8px; }
-    .prop-key { color: var(--text-muted); flex-shrink: 0; }
-    .prop-val { color: var(--text-primary); text-align: right; word-break: break-all; font-family: 'JetBrains Mono', monospace; font-size: 11px; }
-
-    #neighbor-list { display: flex; flex-direction: column; gap: 4px; max-height: 180px; overflow-y: auto; }
-    .neighbor-chip {
-      padding: 5px 10px; border-radius: 6px; font-size: 11px;
-      font-family: 'JetBrains Mono', monospace;
-      background: rgba(255,255,255,0.04); border: 1px solid var(--border);
-      cursor: pointer; transition: all var(--transition);
+    .inspector-meta h3 {
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: #FFF;
       word-break: break-all;
     }
-    .neighbor-chip:hover { border-color: var(--accent); background: var(--bg-hover); color: var(--accent); }
 
-    #threat-meter { display: flex; flex-direction: column; gap: 6px; }
-    #threat-bar-wrap { height: 8px; background: rgba(255,255,255,0.06); border-radius: 4px; overflow: hidden; }
-    #threat-bar { height: 100%; border-radius: 4px; transition: width 0.6s ease, background 0.6s ease; }
-    #threat-score-label { font-size: 12px; font-weight: 600; }
+    .type-tag {
+      display: inline-block;
+      margin-top: 0.3rem;
+      padding: 0.2rem 0.55rem;
+      border-radius: 4px;
+      font-family: var(--font-mono);
+      font-size: 0.65rem;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
 
-    /* ── Tooltip ─────────────────────────────────────────────────────── */
+    .inspector-section h4 {
+      font-family: var(--font-mono);
+      font-size: 0.68rem;
+      color: var(--orange-accent);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      margin-bottom: 0.5rem;
+    }
+
+    .prop-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 0.35rem 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+      font-size: 0.72rem;
+      gap: 0.5rem;
+    }
+
+    .prop-key {
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+      flex-shrink: 0;
+    }
+
+    .prop-val {
+      color: var(--text-pure);
+      text-align: right;
+      word-break: break-all;
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+    }
+
+    #threat-bar-wrap {
+      height: 8px;
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 4px;
+      overflow: hidden;
+      margin-top: 0.3rem;
+      margin-bottom: 0.4rem;
+    }
+
+    #threat-bar {
+      height: 100%;
+      width: 0%;
+      transition: width 0.4s ease, background 0.4s ease;
+    }
+
+    #threat-score-label {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      font-weight: 700;
+    }
+
+    #neighbor-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+      max-height: 160px;
+      overflow-y: auto;
+    }
+
+    .neighbor-chip {
+      padding: 0.35rem 0.65rem;
+      border-radius: 4px;
+      font-size: 0.7rem;
+      font-family: var(--font-mono);
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--border-subtle);
+      cursor: pointer;
+      transition: all var(--transition);
+      word-break: break-all;
+    }
+
+    .neighbor-chip:hover {
+      border-color: var(--red-primary);
+      color: #FFF;
+      background: rgba(255, 42, 59, 0.1);
+    }
+
+    /* Modals & Tooltips */
     #tooltip {
-      position: fixed; z-index: 300; pointer-events: none;
-      background: var(--bg-panel); backdrop-filter: var(--glass);
-      border: 1px solid var(--border); border-radius: 8px;
-      padding: 8px 12px; font-size: 12px; color: var(--text-primary);
-      max-width: 280px; word-break: break-all; display: none;
-      box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+      position: fixed;
+      z-index: 300;
+      pointer-events: none;
+      background: rgba(10, 10, 15, 0.95);
+      border: 1px solid var(--border-subtle);
+      border-left: 3px solid var(--red-primary);
+      backdrop-filter: blur(15px);
+      padding: 0.5rem 0.8rem;
+      font-size: 0.72rem;
+      font-family: var(--font-mono);
+      color: #FFF;
+      display: none;
+      border-radius: 4px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.8);
     }
 
-    /* ── Export Modal ────────────────────────────────────────────────── */
-    #export-modal {
-      display: none; position: fixed; inset: 0; z-index: 500;
-      background: rgba(0,0,0,0.7); backdrop-filter: blur(4px);
-      align-items: center; justify-content: center;
+    #ctx-menu {
+      position: fixed;
+      z-index: 250;
+      min-width: 190px;
+      background: var(--bg-surface);
+      backdrop-filter: blur(20px);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-sm);
+      padding: 0.4rem 0;
+      display: none;
+      box-shadow: 0 15px 40px rgba(0,0,0,0.8);
+      font-family: var(--font-mono);
+      font-size: 0.74rem;
     }
-    #export-modal.open { display: flex; }
-    .modal-box {
-      background: var(--bg-panel); border: 1px solid var(--border);
-      border-radius: var(--radius); padding: 28px; width: 360px;
-      box-shadow: 0 24px 64px rgba(0,0,0,0.7);
-    }
-    .modal-box h2 { font-size: 18px; font-weight: 700; margin-bottom: 20px; }
-    .export-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 20px; }
-    .export-btn {
-      display: flex; flex-direction: column; align-items: center; gap: 8px;
-      padding: 16px 10px; border-radius: var(--radius-sm);
-      border: 1px solid var(--border); background: var(--bg-card);
-      cursor: pointer; color: var(--text-secondary); font-size: 12px; font-weight: 600;
+
+    .ctx-item {
+      padding: 0.5rem 1rem;
+      color: var(--text-muted);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
       transition: all var(--transition);
     }
-    .export-btn .icon { font-size: 24px; }
-    .export-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--bg-hover); }
 
-    /* ── Scrollbars ─────────────────────────────────────────────────── */
-    ::-webkit-scrollbar { width: 5px; }
-    ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    .ctx-item:hover {
+      background: rgba(255, 42, 59, 0.15);
+      color: #FFF;
+    }
+
+    .ctx-divider {
+      height: 1px;
+      background: var(--border-subtle);
+      margin: 0.3rem 0;
+    }
+
+    /* Modal Backdrop */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 500;
+      background: rgba(0,0,0,0.75);
+      backdrop-filter: blur(8px);
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-overlay.open {
+      display: flex;
+    }
+
+    .modal-box {
+      background: rgba(15, 15, 22, 0.95);
+      border: 1px solid var(--border-subtle);
+      border-top: 3px solid var(--red-primary);
+      border-radius: var(--radius-sm);
+      padding: 2rem;
+      width: 420px;
+      box-shadow: 0 25px 60px rgba(0,0,0,0.9);
+    }
+
+    .modal-box h2 {
+      font-family: var(--font-display);
+      font-size: 1.25rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      margin-bottom: 1.25rem;
+    }
+
+    .export-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.75rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .export-btn {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 1rem;
+      border: 1px solid var(--border-subtle);
+      background: rgba(255, 255, 255, 0.02);
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      transition: all var(--transition);
+    }
+
+    .export-btn:hover {
+      border-color: var(--red-primary);
+      color: #FFF;
+      background: rgba(255, 42, 59, 0.1);
+    }
+
+    .export-btn .icon {
+      font-size: 1.4rem;
+    }
+
+    /* Responsive */
+    @media (max-width: 1080px) {
+      .hud-console { display: none; }
+      .card-col-8, .card-col-4, .card-col-6 { grid-column: span 12; }
+      nav ul { display: none; }
+      .workbench-layout { grid-template-columns: 1fr; }
+      .workbench-sidebar-left, .workbench-sidebar-right { display: none; }
+    }
   </style>
 </head>
 <body>
-<div id="app">
 
-  <!-- ═══ TOPBAR ═══════════════════════════════════════════════════ -->
-  <header id="topbar">
-    <a id="logo" href="#">
-      <svg viewBox="0 0 28 28" fill="none">
-        <circle cx="14" cy="14" r="13" stroke="#38bdf8" stroke-width="1.5"/>
-        <path d="M14 6l6 8-6 8-6-8 6-8z" fill="#38bdf8" opacity="0.9"/>
-        <circle cx="14" cy="14" r="3" fill="#0ea5e9"/>
-      </svg>
-      <span id="logo-text">HEIMDALL</span>
-    </a>
+  <div class="cyber-grid"></div>
+  <div class="vignette"></div>
 
-    <form id="seed-form" onsubmit="startInvestigation(event)">
-      <input id="seed-input" type="text" placeholder="domain.com  |  1.2.3.4  |  user@example.com" autocomplete="off" spellcheck="false" />
-      <select id="depth-select" title="Max hop depth">
-        <option value="1">Depth 1</option>
-        <option value="2" selected>Depth 2</option>
-        <option value="3">Depth 3</option>
-        <option value="4">Depth 4</option>
-      </select>
-      <button type="submit" id="investigate-btn" class="btn btn-primary">⚡ Investigate</button>
-      <button type="button" class="btn btn-ghost" onclick="clearGraph()">Clear</button>
-    </form>
+  <!-- 3D Scene Host -->
+  <div id="canvas-container"></div>
 
-    <div id="topbar-actions">
-      <button class="btn btn-ghost" onclick="openExportModal()">⬇ Export</button>
-      <button class="btn btn-ghost" onclick="cy.fit()" title="Fit graph">⊡ Fit</button>
-      <button class="btn btn-ghost" onclick="runLayout()" title="Re-layout">⟳ Layout</button>
+  <!-- Persistent Interactive Bottom Dock -->
+  <div class="controls-strip">
+    <span class="ctl-label">3D Lattice Core:</span>
+    <button class="mode-pill active" id="btn-mode-rotate">Autonomous Orbit</button>
+    <button class="mode-pill" id="btn-mode-burst">Trigger Transform Burst</button>
+    <button class="mode-pill" id="btn-mode-red">Alert Override</button>
+  </div>
+
+  <!-- Fixed Top Glass Navigation -->
+  <header>
+    <div class="nav-container">
+      <a href="#" class="brand" onclick="switchView('radar'); return false;">
+        <div class="brand-mark"></div>
+        <div>
+          <div class="brand-text">HEIMDALL</div>
+          <div class="brand-sub">LINK INTELLIGENCE PLATFORM</div>
+        </div>
+      </a>
+
+      <!-- View Switcher -->
+      <div class="view-switcher">
+        <button class="view-pill active" id="pill-view-radar" onclick="switchView('radar')">
+          <span>🛰️</span> 3D Radar
+        </button>
+        <button class="view-pill" id="pill-view-workbench" onclick="switchView('workbench')">
+          <span>🕸️</span> Investigation Workbench
+        </button>
+      </div>
+
+      <nav>
+        <ul>
+          <li><a href="#architecture">Architecture</a></li>
+          <li><a href="#transforms" onclick="switchView('workbench'); return false;">Transforms</a></li>
+          <li><a href="#scoring" onclick="switchView('workbench'); return false;">Threat Scorer</a></li>
+          <li><a href="#enterprise">API & Nodes</a></li>
+        </ul>
+      </nav>
+
+      <div class="nav-actions">
+        <button onclick="switchView('workbench')" class="btn-lux btn-primary">Launch Console</button>
+      </div>
     </div>
   </header>
 
-  <!-- ═══ LEFT SIDEBAR — Stats ══════════════════════════════════════ -->
-  <aside id="sidebar-left">
-    <div>
-      <p class="panel-title">Investigation Stats</p>
-    </div>
-
-    <div id="progress-section">
-      <div id="progress-bar-wrap"><div id="progress-bar"></div></div>
-      <span id="progress-label">Ready — enter a seed to begin</span>
-    </div>
-
-    <div class="stat-row">
-      <div class="stat-card"><div class="stat-value" id="stat-nodes">0</div><div class="stat-label">Nodes</div></div>
-      <div class="stat-card"><div class="stat-value" id="stat-edges">0</div><div class="stat-label">Edges</div></div>
-    </div>
-    <div class="stat-row">
-      <div class="stat-card"><div class="stat-value" id="stat-depth">—</div><div class="stat-label">Depth</div></div>
-      <div class="stat-card"><div class="stat-value" id="stat-transforms">0</div><div class="stat-label">Transforms Run</div></div>
-    </div>
-
-    <div>
-      <p class="panel-title" style="margin-bottom:10px">Entity Types</p>
-      <div id="entity-breakdown">
-        <!-- populated dynamically -->
-      </div>
-    </div>
-
-    <div>
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-        <p class="panel-title" style="border-bottom:none;padding-bottom:0">Ego-Net Radius</p>
-        <span id="ego-radius-val" style="font-size:11px;color:var(--accent);font-family:'JetBrains Mono',monospace">All</span>
-      </div>
-      <input type="range" id="ego-slider" min="1" max="4" value="4" style="width:100%;accent-color:var(--accent);cursor:pointer" oninput="onEgoRadiusChange(this.value)" />
-    </div>
-
-    <div>
-      <p class="panel-title" style="margin-bottom:8px">Activity Log</p>
-      <div id="activity-feed"></div>
-    </div>
-  </aside>
-
-  <!-- ═══ GRAPH CANVAS ═══════════════════════════════════════════════ -->
-  <main id="cy-container">
-    <div id="cy"></div>
-    <div id="status-badge">
-      <div id="status-dot"></div>
-      <span id="status-text">Idle</span>
-    </div>
-    <div id="canvas-toolbar">
-      <button class="canvas-btn" onclick="cy.zoom(cy.zoom()*1.25)" title="Zoom in">+</button>
-      <button class="canvas-btn" onclick="cy.zoom(cy.zoom()*0.8)" title="Zoom out">−</button>
-      <button class="canvas-btn" onclick="cy.fit()" title="Fit all">⊡</button>
-      <button class="canvas-btn" onclick="cy.center()" title="Center">◎</button>
-      <button class="canvas-btn" onclick="togglePhysics()" id="physics-btn" title="Toggle physics">⚙</button>
-      <button class="canvas-btn" onclick="togglePathMode()" id="path-mode-btn" title="A* Shortest Path">⚡</button>
-      <button class="canvas-btn" onclick="toggleGroupByType()" id="group-btn" title="Group by Entity Type">🗂</button>
-      <button class="canvas-btn" onclick="openDiffModal()" id="diff-btn" title="Compare Sessions (Diff)">🔀</button>
-    </div>
-  </main>
-
-  <!-- ═══ RIGHT SIDEBAR — Node Inspector ════════════════════════════ -->
-  <aside id="sidebar-right">
-    <p class="panel-title">Node Inspector</p>
-
-    <div id="inspector-placeholder">
-      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-        <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
-      </svg>
-      <p>Click any node on the graph to inspect its properties, connections, and threat intelligence data.</p>
-    </div>
-
-    <div id="inspector-content">
-      <div class="inspector-header">
-        <div class="inspector-icon" id="insp-icon"></div>
-        <div class="inspector-meta">
-          <h3 id="insp-value"></h3>
-          <span class="type-tag" id="insp-type-tag"></span>
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <!-- VIEW 1: 3D RADAR & RECON CORE LANDING                              -->
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <div id="view-radar">
+    <div class="content-layer">
+      
+      <!-- Hero Section -->
+      <section class="hero">
+        <div class="status-badge">
+          <div class="pulse-dot"></div>
+          Engine Operational // 69 Pipeline Tests Passing
         </div>
-      </div>
 
-      <div class="inspector-section" id="insp-threat-section" style="display:none">
-        <h4>Threat Score</h4>
-        <div id="threat-meter">
-          <div id="threat-bar-wrap"><div id="threat-bar" style="width:0%"></div></div>
-          <span id="threat-score-label"></span>
+        <h1 class="hero-title">
+          The Autonomous <br>
+          <span class="accent">OSINT Link Engine</span>
+        </h1>
+
+        <p class="hero-desc">
+          A high-velocity, graph-native intelligence platform designed for elite red teams, 
+          analysts, and autonomous cyber-reconnaissance. Accelerating from seed input 
+          to recursive multi-hop asset exposure in milliseconds.
+        </p>
+
+        <!-- Fast Seed Launcher Form -->
+        <div class="hero-seed-box">
+          <form id="hero-seed-form" onsubmit="launchInvestigation(event, 'hero')">
+            <div class="hero-seed-row">
+              <input type="text" id="hero-seed-input" class="hero-input" placeholder="Enter target: domain.com, 1.1.1.1, or user@org.com" autocomplete="off" spellcheck="false" />
+              <select id="hero-depth-select" class="hero-select" title="Max Crawl Depth">
+                <option value="1">Depth 1</option>
+                <option value="2" selected>Depth 2 (Fast)</option>
+                <option value="3">Depth 3</option>
+                <option value="4">Depth 4</option>
+              </select>
+              <button type="submit" id="hero-submit-btn" class="btn-lux btn-primary">⚡ Run</button>
+            </div>
+            <div class="quick-chips">
+              <span class="chip-label">Quick Seeds:</span>
+              <span class="seed-chip" onclick="applySeed('drdo.gov.in')">drdo.gov.in</span>
+              <span class="seed-chip" onclick="applySeed('cloudflare.com')">cloudflare.com</span>
+              <span class="seed-chip" onclick="applySeed('8.8.8.8')">8.8.8.8</span>
+              <span class="seed-chip" onclick="applySeed('admin@gmail.com')">admin@gmail.com</span>
+            </div>
+          </form>
         </div>
-      </div>
 
-      <div class="inspector-section" id="insp-props-section">
-        <h4>Properties</h4>
-        <div id="insp-props"></div>
-      </div>
+        <!-- Real-Time Telemetry HUD Console -->
+        <div class="hud-console">
+          <div class="hud-header">
+            <span>// PIPELINE TELEMETRY</span>
+            <span id="live-hz">60.0 FPS</span>
+          </div>
+          <div class="hud-stream" id="telemetry-feed">
+            <div class="hud-row">
+              <span class="ts">00:01:04</span>
+              <span class="lvl-crit">CRIT</span>
+              <span class="val">ASN13335 announced 412 CIDR prefixes</span>
+            </div>
+            <div class="hud-row">
+              <span class="ts">00:01:05</span>
+              <span class="lvl-warn">WARN</span>
+              <span class="val">RDP port 3389 exposed on perimeter</span>
+            </div>
+            <div class="hud-row">
+              <span class="ts">00:01:07</span>
+              <span class="lvl-ok">INFO</span>
+              <span class="val">fcose batch render: 35ms buffer flushed</span>
+            </div>
+          </div>
+        </div>
+      </section>
 
-      <div class="inspector-section">
-        <h4>Connections (<span id="insp-neighbor-count">0</span>)</h4>
-        <div id="neighbor-list"></div>
-      </div>
+      <!-- Architecture Bento Grid -->
+      <section id="architecture" style="padding-top: 4rem;">
+        <div class="section-title-wrap">
+          <span class="section-tag">// SUBSYSTEMS & ORCHESTRATION</span>
+          <h2 class="section-title">Engineered for Absolute Clarity</h2>
+        </div>
 
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button class="btn btn-primary" style="font-size:11px;height:30px;padding:0 12px" onclick="runTransformOnSelected()">Run Transforms</button>
-        <button class="btn btn-ghost" style="font-size:11px;height:30px;padding:0 12px" onclick="focusOnSelected()">Focus Subgraph</button>
-        <button class="btn btn-ghost" style="font-size:11px;height:30px;padding:0 12px" onclick="copyUrn()">Copy URN</button>
-      </div>
-    </div>
-  </aside>
-</div>
+        <div class="bento-grid">
+          <div class="bento-card card-col-8">
+            <div class="card-label">Core Runtime</div>
+            <div class="card-metric" id="metric-transforms">16<span class="accent-sym">+</span> Transforms</div>
+            <p class="card-desc">
+              Fully asynchronous multi-hop pipeline coordinating DoH, crt.sh certificate harvesting, 
+              BGP routing, RDAP/WHOIS extraction, VirusTotal threat telemetry, and AbuseIPDB scoring with 
+              zero-key graceful degradation.
+            </p>
+          </div>
 
-<!-- Context Menu -->
-<div id="ctx-menu">
-  <div class="ctx-item" onclick="runTransformOnCtxNode()">⚡ Run Transforms</div>
-  <div class="ctx-item" onclick="focusOnCtxNode()">🔍 Focus Subgraph</div>
-  <div class="ctx-item" onclick="pinCtxNode()">📌 Pin Node</div>
-  <div class="ctx-divider"></div>
-  <div class="ctx-item" onclick="copyCtxUrn()">📋 Copy URN</div>
-  <div class="ctx-item" onclick="removeCtxNode()">🗑 Remove Node</div>
-</div>
+          <div class="bento-card card-col-4">
+            <div class="card-label">Graph Persistence</div>
+            <div class="card-metric">WAL<span class="accent-sym">/</span>Neo4j</div>
+            <p class="card-desc">
+              Dual-engine persistence layer. Asynchronous SQLite write-ahead logging with 
+              seamless batch-unwind streaming to enterprise Neo4j clusters.
+            </p>
+          </div>
 
-<!-- Tooltip -->
-<div id="tooltip"></div>
+          <div class="bento-card card-col-4">
+            <div class="card-label">Pathfinding Precision</div>
+            <div class="card-metric">A<span class="accent-sym">*</span> Search</div>
+            <p class="card-desc">
+              Integrated Dijkstra and A* topological traversal algorithms trace attack trajectories 
+              between unassociated entities through high-degree infrastructure hubs.
+            </p>
+          </div>
 
-<!-- Export Modal -->
-<div id="export-modal">
-  <div class="modal-box">
-    <h2>Export Graph</h2>
-    <div class="export-grid">
-      <div class="export-btn" onclick="doExport('json')">
-        <span class="icon">📄</span>JSON
-      </div>
-      <div class="export-btn" onclick="doExport('graphml')">
-        <span class="icon">🔷</span>GraphML
-      </div>
-      <div class="export-btn" onclick="doExport('mtgx')">
-        <span class="icon">🦅</span>Maltego
-      </div>
-    </div>
-    <div style="display:flex;justify-content:flex-end">
-      <button class="btn btn-ghost" onclick="closeExportModal()">Close</button>
+          <div class="bento-card card-col-8">
+            <div class="card-label">Autonomous Decision Matrix</div>
+            <div class="card-metric">0<span class="accent-sym">-</span>100 Risk Score</div>
+            <p class="card-desc">
+              Composite threat scoring weighting AbuseIPDB confidence, VirusTotal engine ratios, 
+              weighted CVSS 9.0+ CVE exposures, and critical open ports directly on the canvas.
+            </p>
+          </div>
+        </div>
+      </section>
+
     </div>
   </div>
-</div>
 
-<!-- Diff Modal -->
-<div id="diff-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);backdrop-filter:blur(6px);z-index:300;align-items:center;justify-content:center">
-  <div class="modal-box" style="background:var(--bg-panel);border:1px solid var(--border);border-radius:var(--radius);padding:24px;width:440px;display:flex;flex-direction:column;gap:16px">
-    <h2 style="font-size:16px;color:var(--text-primary)">Compare Investigation Sessions</h2>
-    <p style="font-size:12px;color:var(--text-secondary)">Calculate attack surface deltas between baseline and sweep sessions.</p>
-    <div>
-      <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px">Base Session ID (A)</label>
-      <input type="text" id="diff-session-a" style="width:100%;height:34px;padding:0 10px;background:rgba(255,255,255,0.05);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text-primary);font-family:'JetBrains Mono', monospace;font-size:12px" placeholder="Baseline session UUID" />
-    </div>
-    <div>
-      <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px">Target Session ID (B)</label>
-      <input type="text" id="diff-session-b" style="width:100%;height:34px;padding:0 10px;background:rgba(255,255,255,0.05);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text-primary);font-family:'JetBrains Mono', monospace;font-size:12px" placeholder="Sweep session UUID" />
-    </div>
-    <div style="display:flex;justify-content:flex-end;gap:8px">
-      <button class="btn btn-ghost" onclick="closeDiffModal()">Cancel</button>
-      <button class="btn btn-primary" onclick="executeDiffComparison()">Compute Diff</button>
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <!-- VIEW 2: INVESTIGATION WORKBENCH (FULL LINK ANALYSIS WORKSPACE)      -->
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <div id="view-workbench">
+    <div class="workbench-layout">
+
+      <!-- Left Sidebar: Telemetry & Controls -->
+      <aside class="workbench-sidebar-left">
+        <div class="wb-panel-title">
+          <span>// INVESTIGATION TELEMETRY</span>
+          <span id="stat-depth-badge" style="color:var(--red-primary)">DEPTH 0</span>
+        </div>
+
+        <div class="wb-progress-box">
+          <div class="wb-progress-track">
+            <div class="wb-progress-bar" id="wb-progress-bar"></div>
+          </div>
+          <span class="wb-progress-lbl" id="wb-progress-label">Ready — enter a target seed</span>
+        </div>
+
+        <div class="wb-stat-grid">
+          <div class="wb-stat-card">
+            <div class="wb-stat-val" id="stat-nodes">0</div>
+            <div class="wb-stat-lbl">Entities</div>
+          </div>
+          <div class="wb-stat-card">
+            <div class="wb-stat-val" id="stat-edges">0</div>
+            <div class="wb-stat-lbl">Links</div>
+          </div>
+          <div class="wb-stat-card">
+            <div class="wb-stat-val" id="stat-transforms">0</div>
+            <div class="wb-stat-lbl">Transforms</div>
+          </div>
+          <div class="wb-stat-card">
+            <div class="wb-stat-val" id="stat-threat-count">0</div>
+            <div class="wb-stat-lbl">High Risk</div>
+          </div>
+        </div>
+
+        <div>
+          <div class="wb-panel-title" style="margin-bottom:0.6rem">
+            <span>Entity Breakdown</span>
+          </div>
+          <div id="entity-breakdown"></div>
+        </div>
+
+        <div>
+          <div class="wb-panel-title" style="margin-bottom:0.5rem">
+            <span>Ego-Net Radius</span>
+            <span id="ego-radius-val" style="color:var(--orange-accent)">All</span>
+          </div>
+          <input type="range" id="ego-slider" min="1" max="4" value="4" style="width:100%;accent-color:var(--red-primary);cursor:pointer" oninput="onEgoRadiusChange(this.value)" />
+        </div>
+
+        <div>
+          <div class="wb-panel-title" style="margin-bottom:0.5rem">
+            <span>Live Activity Stream</span>
+          </div>
+          <div id="activity-feed"></div>
+        </div>
+      </aside>
+
+      <!-- Center: Cytoscape Graph Canvas -->
+      <main class="workbench-center" id="cy-container">
+        <div id="cy"></div>
+
+        <div id="status-badge">
+          <div id="status-dot"></div>
+          <span id="status-text">Engine Ready</span>
+        </div>
+
+        <!-- Floating Canvas Toolbar -->
+        <div id="canvas-toolbar">
+          <button class="canvas-btn" onclick="cy.zoom(cy.zoom()*1.25)" title="Zoom in">+</button>
+          <button class="canvas-btn" onclick="cy.zoom(cy.zoom()*0.8)" title="Zoom out">−</button>
+          <button class="canvas-btn" onclick="cy.fit(undefined, 30)" title="Fit all">⊡</button>
+          <button class="canvas-btn" onclick="cy.center()" title="Center">◎</button>
+          <button class="canvas-btn" onclick="runFastLayout()" title="Optimize Layout">⟳</button>
+          <button class="canvas-btn" onclick="togglePathMode()" id="path-mode-btn" title="A* Shortest Path">⚡</button>
+          <button class="canvas-btn" onclick="toggleGroupByType()" id="group-btn" title="Group by Entity Type">🗂</button>
+          <button class="canvas-btn" onclick="openDiffModal()" id="diff-btn" title="Compare Sessions (Diff)">🔀</button>
+          <button class="canvas-btn" onclick="openExportModal()" title="Export Graph">⬇</button>
+          <button class="canvas-btn" onclick="clearInvestigation()" title="Clear Graph" style="color:var(--red-primary)">🗑</button>
+        </div>
+      </main>
+
+      <!-- Right Sidebar: Node Inspector -->
+      <aside class="workbench-sidebar-right">
+        <div class="wb-panel-title">
+          <span>// ENTITY INSPECTOR</span>
+        </div>
+
+        <div id="inspector-placeholder">
+          <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+          </svg>
+          <p>Click any graph node to inspect intelligence telemetry, DNS records, CVE exposures, and neighbors.</p>
+        </div>
+
+        <div id="inspector-content">
+          <div class="inspector-header">
+            <div class="inspector-icon" id="insp-icon"></div>
+            <div class="inspector-meta">
+              <h3 id="insp-value"></h3>
+              <span class="type-tag" id="insp-type-tag"></span>
+            </div>
+          </div>
+
+          <div class="inspector-section" id="insp-threat-section" style="display:none">
+            <h4>Autonomous Risk Score</h4>
+            <div id="threat-bar-wrap">
+              <div id="threat-bar"></div>
+            </div>
+            <span id="threat-score-label"></span>
+          </div>
+
+          <div class="inspector-section">
+            <h4>Entity Properties</h4>
+            <div id="insp-props"></div>
+          </div>
+
+          <div class="inspector-section">
+            <h4>Adjacent Links (<span id="insp-neighbor-count">0</span>)</h4>
+            <div id="neighbor-list"></div>
+          </div>
+
+          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:0.5rem">
+            <button class="btn-lux btn-primary" style="font-size:0.7rem;padding:0.5rem 0.9rem" onclick="pivotFromSelected()">Pivot / Expand</button>
+            <button class="btn-lux btn-ghost" style="font-size:0.7rem;padding:0.5rem 0.9rem" onclick="focusOnSelected()">Focus</button>
+            <button class="btn-lux btn-ghost" style="font-size:0.7rem;padding:0.5rem 0.9rem" onclick="copySelectedUrn()">Copy URN</button>
+          </div>
+        </div>
+      </aside>
+
     </div>
   </div>
-</div>
 
-<!-- ── Application Script ─────────────────────────────────────────── -->
-<script>
-'use strict';
+  <!-- Context Menu -->
+  <div id="ctx-menu">
+    <div class="ctx-item" onclick="pivotFromCtxNode()">⚡ Pivot / Expand</div>
+    <div class="ctx-item" onclick="focusOnCtxNode()">🔍 Focus Subgraph</div>
+    <div class="ctx-item" onclick="pinCtxNode()">📌 Pin Node</div>
+    <div class="ctx-divider"></div>
+    <div class="ctx-item" onclick="copyCtxUrn()">📋 Copy URN</div>
+    <div class="ctx-item" onclick="removeCtxNode()">🗑 Remove Node</div>
+  </div>
 
-// ═══════════════════════════════════════════════════════════════════
-// Entity type → visual style mapping
-// ═══════════════════════════════════════════════════════════════════
-const ENTITY_STYLES = {
-  Domain:          { color: '#38bdf8', shape: 'ellipse',   icon: '🌐', label: 'Domain' },
-  Subdomain:       { color: '#7dd3fc', shape: 'ellipse',   icon: '🔗', label: 'Subdomain' },
-  IPv4:            { color: '#fbbf24', shape: 'rectangle', icon: '🖥', label: 'IPv4' },
-  IPv6:            { color: '#f59e0b', shape: 'rectangle', icon: '🖥', label: 'IPv6' },
-  PortService:     { color: '#f43f5e', shape: 'hexagon',   icon: '🔌', label: 'PortService' },
-  ThreatScore:     { color: '#ef4444', shape: 'octagon',   icon: '⚠️', label: 'Threat' },
-  MaliciousDetection: { color: '#dc2626', shape: 'octagon', icon: '🚨', label: 'Malicious' },
-  Email:           { color: '#c084fc', shape: 'diamond',   icon: '✉️', label: 'Email' },
-  Organization:    { color: '#a78bfa', shape: 'diamond',   icon: '🏢', label: 'Org' },
-  Registrar:       { color: '#818cf8', shape: 'diamond',   icon: '📋', label: 'Registrar' },
-  ASNumber:        { color: '#34d399', shape: 'barrel',    icon: '🌍', label: 'ASN' },
-  CIDRBlock:       { color: '#6ee7b7', shape: 'barrel',    icon: '📡', label: 'CIDR' },
-  SSLCertificate:  { color: '#67e8f9', shape: 'round-rectangle', icon: '🔒', label: 'SSL' },
-  Person:          { color: '#f9a8d4', shape: 'ellipse',   icon: '👤', label: 'Person' },
-  URL:             { color: '#fb923c', shape: 'round-rectangle', icon: '🔗', label: 'URL' },
-  DMARCPolicy:     { color: '#e879f9', shape: 'pentagon',  icon: '🛡', label: 'DMARC' },
-  AbuseReport:     { color: '#fca5a5', shape: 'octagon',   icon: '🚩', label: 'Abuse' },
-  InternetExchange:{ color: '#4ade80', shape: 'barrel',    icon: '🔀', label: 'IX' },
-  ServiceBanner:   { color: '#f43f5e', shape: 'hexagon',   icon: '🏷️', label: 'Banner' },
-  SecurityHeader:  { color: '#38bdf8', shape: 'round-rectangle', icon: '🛡️', label: 'SecHeader' },
-  WAFSignature:    { color: '#ec4899', shape: 'diamond',   icon: '🧱', label: 'WAF' },
-  TLSCertificate:  { color: '#67e8f9', shape: 'round-rectangle', icon: '🔒', label: 'TLSCert' },
-};
-function getStyle(entityType) {
-  return ENTITY_STYLES[entityType] || { color: '#94a3b8', shape: 'ellipse', icon: '◉', label: entityType };
-}
+  <!-- Tooltip -->
+  <div id="tooltip"></div>
 
-// ═══════════════════════════════════════════════════════════════════
-// State
-// ═══════════════════════════════════════════════════════════════════
-let currentSessionId = null;
-let currentSeedUrn   = null;
-let evtSource        = null;
-let sseReconnectTimer = null;
-let physicsEnabled   = true;
-let selectedNode     = null;
-let ctxNode          = null;
-let transformCount   = 0;
-let currentDepth     = 0;
+  <!-- Export Modal -->
+  <div class="modal-overlay" id="export-modal">
+    <div class="modal-box">
+      <h2>Export Graph Dataset</h2>
+      <div class="export-grid">
+        <div class="export-btn" onclick="doExport('json')">
+          <span class="icon">📄</span>JSON Spec
+        </div>
+        <div class="export-btn" onclick="doExport('graphml')">
+          <span class="icon">🔷</span>GraphML
+        </div>
+        <div class="export-btn" onclick="doExport('mtgx')">
+          <span class="icon">🦅</span>Maltego MTGX
+        </div>
+        <div class="export-btn" onclick="exportPng()">
+          <span class="icon">🖼️</span>PNG Image
+        </div>
+      </div>
+      <div style="display:flex;justify-content:flex-end">
+        <button class="btn-lux btn-ghost" onclick="closeExportModal()">Close</button>
+      </div>
+    </div>
+  </div>
 
-// SSE 150ms batch buffer
-let batchBuffer = [];
-let batchFlushTimer = null;
+  <!-- Diff Modal -->
+  <div class="modal-overlay" id="diff-modal">
+    <div class="modal-box" style="width:460px">
+      <h2>Compare Investigation Sessions</h2>
+      <div style="display:flex;flex-direction:column;gap:0.85rem;margin-bottom:1.5rem">
+        <div>
+          <label style="font-family:var(--font-mono);font-size:0.7rem;color:var(--text-muted)">SESSION A (BASELINE)</label>
+          <input type="text" id="diff-session-a" class="hero-input" style="height:38px;width:100%;margin-top:0.3rem" placeholder="Session UUID" />
+        </div>
+        <div>
+          <label style="font-family:var(--font-mono);font-size:0.7rem;color:var(--text-muted)">SESSION B (TARGET)</label>
+          <input type="text" id="diff-session-b" class="hero-input" style="height:38px;width:100%;margin-top:0.3rem" placeholder="Session UUID" />
+        </div>
+      </div>
+      <div style="display:flex;justify-content:flex-end;gap:0.75rem">
+        <button class="btn-lux btn-ghost" onclick="closeDiffModal()">Cancel</button>
+        <button class="btn-lux btn-primary" onclick="executeDiffComparison()">Execute Diff</button>
+      </div>
+    </div>
+  </div>
 
-// Entity type counters
-const entityCounts = {};
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <!-- 3D THREE.JS SCRIPT & CONTROLS                                       -->
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <script>
+    const container = document.getElementById('canvas-container');
+    const scene = new THREE.Scene();
+    
+    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera.position.set(0, 0, 85);
 
-// ═══════════════════════════════════════════════════════════════════
-// Cytoscape Initialization
-// ═══════════════════════════════════════════════════════════════════
-const cy = cytoscape({
-  container: document.getElementById('cy'),
-  elements: [],
-  style: [
-    {
-      selector: 'node',
-      style: {
-        'label': 'data(label)',
-        'color': 'data(textColor)',
-        'font-family': 'Inter, sans-serif',
-        'font-size': 11,
-        'font-weight': 500,
-        'text-valign': 'bottom',
-        'text-margin-y': 6,
-        'text-outline-color': '#0a0f1a',
-        'text-outline-width': 2,
-        'background-color': 'data(bgColor)',
-        'border-width': 2,
-        'border-color': 'data(borderColor)',
-        'width': 'data(size)',
-        'height': 'data(size)',
-        'shape': 'data(shape)',
-        'transition-property': 'border-color, border-width, opacity',
-        'transition-duration': '200ms',
-        'opacity': 0,
-      }
-    },
-    {
-      selector: 'node.visible',
-      style: { 'opacity': 1 }
-    },
-    {
-      selector: 'node:selected',
-      style: {
-        'border-width': 3,
-        'border-color': '#ffffff',
-        'overlay-color': '#38bdf8',
-        'overlay-opacity': 0.15,
-        'overlay-padding': 4,
-      }
-    },
-    {
-      selector: 'node.pinned',
-      style: { 'border-style': 'dashed' }
-    },
-    {
-      selector: 'edge',
-      style: {
-        'width': 1.5,
-        'line-color': 'rgba(56,189,248,0.25)',
-        'target-arrow-color': 'rgba(56,189,248,0.4)',
-        'target-arrow-shape': 'triangle',
-        'curve-style': 'bezier',
-        'label': 'data(label)',
-        'font-size': 9,
-        'color': 'rgba(148,163,184,0.7)',
-        'text-background-color': '#0a0f1a',
-        'text-background-opacity': 0.8,
-        'text-background-padding': 2,
-        'font-family': 'JetBrains Mono, monospace',
-        'opacity': 0.8,
-      }
-    },
-    {
-      selector: 'edge:selected',
-      style: {
-        'line-color': 'rgba(56,189,248,0.7)',
-        'width': 2.5,
-        'opacity': 1,
-      }
-    },
-    {
-      selector: 'node.path-node',
-      style: {
-        'border-color': '#fbbf24',
-        'border-width': 4,
-        'overlay-color': '#fbbf24',
-        'overlay-opacity': 0.25,
-        'overlay-padding': 6,
-      }
-    },
-    {
-      selector: 'edge.path-edge',
-      style: {
-        'line-color': '#fbbf24',
-        'target-arrow-color': '#fbbf24',
-        'width': 4,
-        'opacity': 1,
-        'z-index': 999,
-      }
-    },
-    {
-      selector: 'node.delta-added',
-      style: {
-        'border-color': '#34d399',
-        'border-width': 4,
-        'overlay-color': '#34d399',
-        'overlay-opacity': 0.2,
-      }
-    },
-    {
-      selector: 'node.delta-removed',
-      style: {
-        'border-color': '#f43f5e',
-        'border-style': 'dashed',
-        'border-width': 3,
-        'opacity': 0.5,
-      }
-    },
-    {
-      selector: 'node.delta-changed',
-      style: {
-        'border-color': '#f59e0b',
-        'border-width': 4,
-      }
-    },
-    {
-      selector: 'node:parent',
-      style: {
-        'background-opacity': 0.08,
-        'background-color': '#38bdf8',
-        'border-color': 'rgba(56,189,248,0.4)',
-        'border-width': 1,
-        'border-style': 'dashed',
-        'label': 'data(label)',
-        'color': '#94a3b8',
-        'font-size': 12,
-        'text-valign': 'top',
-        'text-halign': 'center',
-        'text-margin-y': -8,
-      }
-    },
-    {
-      selector: '.hidden-ego',
-      style: { 'display': 'none' }
-    }
-  ],
-  layout: { name: 'preset' },
-  zoom: 1,
-  minZoom: 0.05,
-  maxZoom: 8,
-  wheelSensitivity: 0.3,
-});
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    container.appendChild(renderer.domElement);
 
-// ─── Cytoscape Events ────────────────────────────────────────────
-cy.on('tap', 'node', evt => {
-  if (pathMode) {
-    handlePathTap(evt.target);
-    return;
-  }
-  selectNode(evt.target);
-});
-cy.on('tap', evt => { if (evt.target === cy) clearInspector(); });
-cy.on('cxttap', 'node', evt => { openCtxMenu(evt, evt.target); });
-cy.on('tap', () => closeCtxMenu());
-cy.on('mouseover', 'node', evt => showTooltip(evt));
-cy.on('mouseout', 'node', () => hideTooltip());
+    const C_RED = 0xFF2A3B;
+    const C_ORANGE = 0xFF7300;
+    const C_WHITE = 0xFFFFFF;
 
-// ═══════════════════════════════════════════════════════════════════
-// Investigation Lifecycle
-// ═══════════════════════════════════════════════════════════════════
-async function startInvestigation(evt) {
-  evt.preventDefault();
-  const seed  = document.getElementById('seed-input').value.trim();
-  const depth = parseInt(document.getElementById('depth-select').value);
-  if (!seed) return;
+    const graphGroup = new THREE.Group();
+    scene.add(graphGroup);
 
-  clearGraph();
-  setStatus('running', `Investigating ${seed}…`);
-  document.getElementById('investigate-btn').disabled = true;
-  document.getElementById('progress-label').textContent = 'Starting investigation…';
-  document.getElementById('progress-bar').style.width = '5%';
-  transformCount = 0; currentDepth = 0;
-
-  try {
-    const res = await fetch('/api/v1/investigations/start', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ seed, max_depth: depth }),
+    const sphereGeo = new THREE.IcosahedronGeometry(24, 2);
+    const sphereMat = new THREE.MeshBasicMaterial({
+      color: C_RED,
+      wireframe: true,
+      transparent: true,
+      opacity: 0.14
     });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      setStatus('error', err.detail || 'Failed to start investigation');
-      document.getElementById('investigate-btn').disabled = false;
-      return;
+    const innerLattice = new THREE.Mesh(sphereGeo, sphereMat);
+    graphGroup.add(innerLattice);
+
+    const nodeCount = 120;
+    const positions = new Float32Array(nodeCount * 3);
+    const colors = new Float32Array(nodeCount * 3);
+    const nodeVecs = [];
+
+    const colorRed = new THREE.Color(C_RED);
+    const colorOrange = new THREE.Color(C_ORANGE);
+    const colorWhite = new THREE.Color(C_WHITE);
+
+    for(let i = 0; i < nodeCount; i++) {
+      const radius = 22 + Math.random() * 8;
+      const theta = Math.random() * Math.PI * 2;
+      const phi = Math.acos((Math.random() * 2) - 1);
+
+      const x = radius * Math.sin(phi) * Math.cos(theta);
+      const y = radius * Math.sin(phi) * Math.sin(theta);
+      const z = radius * Math.cos(phi);
+
+      positions[i * 3] = x;
+      positions[i * 3 + 1] = y;
+      positions[i * 3 + 2] = z;
+
+      nodeVecs.push(new THREE.Vector3(x, y, z));
+
+      let c = Math.random() > 0.4 ? (Math.random() > 0.5 ? colorRed : colorOrange) : colorWhite;
+      colors[i * 3] = c.r;
+      colors[i * 3 + 1] = c.g;
+      colors[i * 3 + 2] = c.b;
     }
-    const data = await res.json();
-    currentSessionId = data.session_id;
-    currentSeedUrn   = data.seed;
-    connectEventStream(data.session_id);
-    logActivity(`🚀 Investigating ${data.seed} (depth ${depth})`, 'info');
-  } catch (e) {
-    setStatus('error', 'Network error — is the Heimdall API running?');
-    document.getElementById('investigate-btn').disabled = false;
-  }
-}
 
-function connectEventStream(sessionId, retryCount = 0) {
-  if (evtSource) { evtSource.close(); evtSource = null; }
-  clearTimeout(sseReconnectTimer);
+    const nodeGeo = new THREE.BufferGeometry();
+    nodeGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    nodeGeo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 
-  evtSource = new EventSource(`/api/v1/investigations/${sessionId}/events`);
+    function createGlowTexture() {
+      const canvas = document.createElement('canvas');
+      canvas.width = 64;
+      canvas.height = 64;
+      const ctx = canvas.getContext('2d');
+      const grad = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+      grad.addColorStop(0, 'rgba(255,255,255,1)');
+      grad.addColorStop(0.2, 'rgba(255,80,60,0.8)');
+      grad.addColorStop(0.6, 'rgba(255,40,40,0.2)');
+      grad.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, 64, 64);
+      return new THREE.CanvasTexture(canvas);
+    }
 
-  evtSource.addEventListener('message', evt => {
-    try {
-      const payload = JSON.parse(evt.data);
-      handleSseEvent(payload);
-    } catch { /* ignore malformed frames */ }
-  });
-
-  // Named event types from the API
-  ['INVESTIGATION_STARTED','DEPTH_STARTED','TRANSFORM_COMPLETED',
-   'EDGE_DISCOVERED','INVESTIGATION_COMPLETED','ERROR','STREAM_END'].forEach(name => {
-    evtSource.addEventListener(name, evt => {
-      try { handleSseEvent({ type: name, data: JSON.parse(evt.data || '{}') }); } catch {}
+    const nodeMat = new THREE.PointsMaterial({
+      size: 2.2,
+      vertexColors: true,
+      map: createGlowTexture(),
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false
     });
-  });
 
-  evtSource.onerror = () => {
-    if (retryCount < 5) {
-      const delay = Math.min(500 * Math.pow(2, retryCount), 8000);
-      setStatus('running', `Stream interrupted, reconnecting in ${Math.round(delay/1000)}s…`);
-      sseReconnectTimer = setTimeout(() => connectEventStream(sessionId, retryCount + 1), delay);
-    } else {
-      setStatus('error', 'Event stream lost. Investigation may have completed.');
-      finalize();
-    }
-  };
-}
+    const pointCloud = new THREE.Points(nodeGeo, nodeMat);
+    graphGroup.add(pointCloud);
 
-function handleSseEvent(payload) {
-  const { type, data } = payload;
-  switch (type) {
-    case 'DEPTH_STARTED':
-      currentDepth = data.depth || currentDepth + 1;
-      const maxDepth = parseInt(document.getElementById('depth-select').value);
-      document.getElementById('progress-bar').style.width = `${Math.min(90, (currentDepth / maxDepth) * 85 + 10)}%`;
-      document.getElementById('progress-label').textContent = `Depth ${currentDepth}/${maxDepth} — ${data.frontier_size || 0} entities queued`;
-      document.getElementById('stat-depth').textContent = currentDepth;
-      break;
+    const linePositions = [];
+    const lineColors = [];
+    for(let i = 0; i < nodeCount; i++) {
+      for(let j = i + 1; j < nodeCount; j++) {
+        const dist = nodeVecs[i].distanceTo(nodeVecs[j]);
+        if(dist < 10.5) {
+          linePositions.push(nodeVecs[i].x, nodeVecs[i].y, nodeVecs[i].z);
+          linePositions.push(nodeVecs[j].x, nodeVecs[j].y, nodeVecs[j].z);
 
-    case 'TRANSFORM_COMPLETED':
-      transformCount++;
-      document.getElementById('stat-transforms').textContent = transformCount;
-      if (data.status === 'SUCCESS' && data.edges_count > 0) {
-        logActivity(`✓ ${data.transform} → ${data.edges_count} edges (${data.entity?.split(':')[1] || ''})`, 'success');
+          const edgeColor = Math.random() > 0.5 ? colorOrange : colorRed;
+          lineColors.push(edgeColor.r, edgeColor.g, edgeColor.b);
+          lineColors.push(edgeColor.r, edgeColor.g, edgeColor.b);
+        }
       }
-      break;
-
-    case 'EDGE_DISCOVERED':
-      // Buffer for 150ms batch flush
-      batchBuffer.push(data);
-      if (!batchFlushTimer) {
-        batchFlushTimer = setTimeout(flushBatch, 150);
-      }
-      break;
-
-    case 'INVESTIGATION_COMPLETED':
-    case 'STREAM_END':
-      flushBatch();
-      if (evtSource) { evtSource.close(); evtSource = null; }
-      finalize();
-      break;
-
-    case 'ERROR':
-      logActivity(`✗ ${data.error || 'Unknown error'}`, 'error');
-      break;
-  }
-}
-
-// ═══════════════════════════════════════════════════════════════════
-// Batch Graph Rendering (150ms window)
-// ═══════════════════════════════════════════════════════════════════
-function flushBatch() {
-  clearTimeout(batchFlushTimer);
-  batchFlushTimer = null;
-
-  if (batchBuffer.length === 0) return;
-  const items = batchBuffer.splice(0, batchBuffer.length);
-
-  const toAdd = [];
-  items.forEach(edge => {
-    const srcType  = edge.source?.split(':')[0] || 'Unknown';
-    const tgtType  = edge.target_type || edge.target?.split(':')[0] || 'Unknown';
-    const srcStyle = getStyle(srcType);
-    const tgtStyle = getStyle(tgtType);
-
-    if (!cy.getElementById(edge.source).length) {
-      entityCounts[srcType] = (entityCounts[srcType] || 0) + 1;
-      toAdd.push({ group: 'nodes', data: buildNodeData(edge.source, srcType, srcStyle) });
     }
-    if (!cy.getElementById(edge.target).length) {
-      entityCounts[tgtType] = (entityCounts[tgtType] || 0) + 1;
-      toAdd.push({ group: 'nodes', data: buildNodeData(edge.target, tgtType, tgtStyle) });
-    }
-    const edgeId = `${edge.source}|${edge.rel}|${edge.target}`;
-    if (!cy.getElementById(edgeId).length) {
-      toAdd.push({
-        group: 'edges',
-        data: { id: edgeId, source: edge.source, target: edge.target, label: edge.rel?.replace(/_/g,' ').toLowerCase() || '' }
+
+    const lineGeo = new THREE.BufferGeometry();
+    lineGeo.setAttribute('position', new THREE.Float32BufferAttribute(linePositions, 3));
+    lineGeo.setAttribute('color', new THREE.Float32BufferAttribute(lineColors, 3));
+
+    const lineMat = new THREE.LineBasicMaterial({
+      vertexColors: true,
+      transparent: true,
+      opacity: 0.25,
+      blending: THREE.AdditiveBlending
+    });
+
+    const edgeLines = new THREE.LineSegments(lineGeo, lineMat);
+    graphGroup.add(edgeLines);
+
+    function makeRing(rad, color, xR, yR) {
+      const ringGeo = new THREE.RingGeometry(rad, rad + 0.15, 64);
+      const ringMat = new THREE.MeshBasicMaterial({
+        color: color,
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: 0.35,
+        blending: THREE.AdditiveBlending
       });
+      const ring = new THREE.Mesh(ringGeo, ringMat);
+      ring.rotation.x = xR;
+      ring.rotation.y = yR;
+      return ring;
     }
-  });
 
-  if (toAdd.length === 0) return;
+    const ring1 = makeRing(35, C_RED, Math.PI / 3, 0);
+    const ring2 = makeRing(38, C_ORANGE, -Math.PI / 4, Math.PI / 6);
+    graphGroup.add(ring1);
+    graphGroup.add(ring2);
 
-  cy.batch(() => {
-    cy.add(toAdd);
-    // Animate new nodes in
-    toAdd.filter(e => e.group === 'nodes').forEach(e => {
-      const node = cy.getElementById(e.data.id);
-      if (node.length) setTimeout(() => node.addClass('visible'), 10);
+    let isAutoRotating = true;
+    let burstActive = false;
+    let alertActive = false;
+    let mouseX = 0;
+    let mouseY = 0;
+
+    window.addEventListener('mousemove', (e) => {
+      mouseX = (e.clientX / window.innerWidth) * 2 - 1;
+      mouseY = -(e.clientY / window.innerHeight) * 2 + 1;
     });
-  });
 
-  updateStats();
-  updateEntityBreakdown();
+    document.getElementById('btn-mode-rotate').addEventListener('click', function() {
+      isAutoRotating = !isAutoRotating;
+      this.classList.toggle('active', isAutoRotating);
+    });
 
-  // Bounded incremental layout — no randomize, no fit, preserves existing positions
-  cy.layout({
-    name: 'fcose',
-    quality: 'default',
-    randomize: false,
-    fit: false,
-    animate: true,
-    animationDuration: 300,
-    animationEasing: 'ease-out',
-    nodeDimensionsIncludeLabels: true,
-    uniformNodeDimensions: false,
-    packComponents: true,
-    step: 'all',
-    nodeRepulsion: () => 6000,
-    idealEdgeLength: () => 80,
-    edgeElasticity: () => 0.45,
-    nestingFactor: 0.1,
-    gravity: 0.25,
-    gravityRange: 3.8,
-    gravityCompound: 1.0,
-    gravityRangeCompound: 1.5,
-    numIter: 2500,
-    tile: true,
-    tilingPaddingVertical: 20,
-    tilingPaddingHorizontal: 20,
-  }).run();
-}
+    function triggerThreeBurst() {
+      burstActive = true;
+      const bBtn = document.getElementById('btn-mode-burst');
+      if (bBtn) bBtn.classList.add('active');
+      setTimeout(() => {
+        burstActive = false;
+        if (bBtn) bBtn.classList.remove('active');
+      }, 1600);
+    }
 
-function buildNodeData(urn, entityType, style) {
-  const val = urn.split(':', 2)[1] || urn;
-  const isHighThreat = entityType === 'ThreatScore' || entityType === 'MaliciousDetection' || entityType === 'AbuseReport';
-  return {
-    id: urn, urn, entityType,
-    value: val,
-    label: val.length > 20 ? val.slice(0, 18) + '…' : val,
-    bgColor: style.color + '22',
-    borderColor: style.color,
-    textColor: style.color,
-    shape: style.shape,
-    size: isHighThreat ? 38 : (entityType === 'Domain' || entityType === 'IPv4' ? 34 : 28),
-  };
-}
+    document.getElementById('btn-mode-burst').addEventListener('click', triggerThreeBurst);
 
-// ═══════════════════════════════════════════════════════════════════
-// Node Inspector
-// ═══════════════════════════════════════════════════════════════════
-function selectNode(node) {
-  selectedNode = node;
-  cy.elements().unselect();
-  node.select();
+    document.getElementById('btn-mode-red').addEventListener('click', function() {
+      alertActive = !alertActive;
+      this.classList.toggle('active', alertActive);
+      innerLattice.material.color.setHex(alertActive ? 0xFF0000 : C_RED);
+      innerLattice.material.opacity = alertActive ? 0.38 : 0.14;
+    });
 
-  const data = node.data();
-  const style = getStyle(data.entityType);
+    let clock = new THREE.Clock();
+    let frameCount = 0;
+    let lastFpsTime = performance.now();
 
-  document.getElementById('inspector-placeholder').style.display = 'none';
-  const content = document.getElementById('inspector-content');
-  content.style.display = 'flex';
+    function animateThree() {
+      requestAnimationFrame(animateThree);
+      const delta = clock.getDelta();
+      const time = clock.getElapsedTime();
 
-  // Icon + header
-  const icon = document.getElementById('insp-icon');
-  icon.textContent = style.icon;
-  icon.style.background = style.color + '22';
-  icon.style.border = `1px solid ${style.color}44`;
+      frameCount++;
+      const now = performance.now();
+      if (now - lastFpsTime >= 1000) {
+        const fps = (frameCount * 1000 / (now - lastFpsTime)).toFixed(1);
+        const fpsEl = document.getElementById('live-hz');
+        if (fpsEl) fpsEl.textContent = `${fps} FPS`;
+        frameCount = 0;
+        lastFpsTime = now;
+      }
 
-  document.getElementById('insp-value').textContent = data.value;
-  const typeTag = document.getElementById('insp-type-tag');
-  typeTag.textContent = style.label;
-  typeTag.style.background = style.color + '22';
-  typeTag.style.color = style.color;
+      if (isAutoRotating) {
+        graphGroup.rotation.y += 0.003;
+        graphGroup.rotation.x += 0.001;
+      }
 
-  // Threat score from node properties if present
-  const props = data.properties || {};
-  const threatScore = props.threat_score;
-  const threatSection = document.getElementById('insp-threat-section');
-  if (typeof threatScore === 'number') {
-    threatSection.style.display = 'block';
-    const bar = document.getElementById('threat-bar');
-    const label = document.getElementById('threat-score-label');
-    const [bg, risk] = threatScore >= 75 ? ['#ef4444','Critical'] : threatScore >= 50 ? ['#f59e0b','High'] : threatScore >= 25 ? ['#fbbf24','Medium'] : ['#34d399','Low'];
-    bar.style.width = `${threatScore}%`;
-    bar.style.background = bg;
-    label.textContent = `${threatScore}/100 — ${risk}`;
-    label.style.color = bg;
-  } else {
-    threatSection.style.display = 'none';
-  }
+      camera.position.x += (mouseX * 12 - camera.position.x) * 0.03;
+      camera.position.y += (mouseY * 8 - camera.position.y) * 0.03;
+      camera.lookAt(0, 0, 0);
 
-  // Properties
-  const propsEl = document.getElementById('insp-props');
-  propsEl.innerHTML = '';
-  const displayProps = { ...props };
-  delete displayProps.threat_score;
-  delete displayProps.risk_level;
-  const propKeys = Object.keys(displayProps);
-  if (propKeys.length) {
-    propKeys.slice(0, 12).forEach(k => {
+      ring1.rotation.z += 0.004;
+      ring2.rotation.z -= 0.003;
+
+      if (burstActive) {
+        const s = 1 + Math.sin(time * 12) * 0.12;
+        graphGroup.scale.set(s, s, s);
+      } else {
+        graphGroup.scale.lerp(new THREE.Vector3(1, 1, 1), 0.05);
+      }
+
+      renderer.render(scene, camera);
+    }
+    animateThree();
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    // Simulated Telemetry Feed for Idle state
+    const sampleTelemetry = [
+      { lvl: 'CRIT', text: 'CVSS 9.8 discovered on port 445 (SMB)' },
+      { lvl: 'WARN', text: 'Zone transfer attempt refused on ns1' },
+      { lvl: 'OK',   text: 'TLS SAN certificate chain parsed: 14 subdomains' },
+      { lvl: 'CRIT', text: 'Reverse WHOIS matched 49 unregistered seeds' },
+      { lvl: 'WARN', text: 'AbuseIPDB score adjusted: 88%' },
+      { lvl: 'OK',   text: 'Fast fcose render cycle: 35ms delta buffer flushed' }
+    ];
+
+    setInterval(() => {
+      if (!currentSessionId) {
+        const pick = sampleTelemetry[Math.floor(Math.random() * sampleTelemetry.length)];
+        pushTelemetryRow(pick.lvl, pick.text);
+      }
+    }, 3200);
+
+    function pushTelemetryRow(lvl, text) {
+      const feed = document.getElementById('telemetry-feed');
+      if (!feed) return;
+      const d = new Date();
+      const ts = d.toTimeString().split(' ')[0];
       const row = document.createElement('div');
-      row.className = 'prop-row';
-      const v = displayProps[k];
-      row.innerHTML = `<span class="prop-key">${k}</span><span class="prop-val">${Array.isArray(v) ? v.slice(0,3).join(', ') + (v.length > 3 ? ` +${v.length-3}` : '') : String(v).slice(0,60)}</span>`;
-      propsEl.appendChild(row);
+      row.className = 'hud-row';
+      row.innerHTML = `
+        <span class="ts">${ts}</span>
+        <span class="lvl-${lvl.toLowerCase()}">${lvl}</span>
+        <span class="val">${text}</span>
+      `;
+      feed.prepend(row);
+      if (feed.children.length > 6) {
+        feed.removeChild(feed.lastChild);
+      }
+    }
+
+    // View Switcher logic
+    function switchView(viewName) {
+      const radarView = document.getElementById('view-radar');
+      const wbView = document.getElementById('view-workbench');
+      const pillRadar = document.getElementById('pill-view-radar');
+      const pillWb = document.getElementById('pill-view-workbench');
+      const canvasCont = document.getElementById('canvas-container');
+
+      if (viewName === 'workbench') {
+        radarView.style.display = 'none';
+        wbView.style.display = 'block';
+        pillRadar.classList.remove('active');
+        pillWb.classList.add('active');
+        canvasCont.style.opacity = '0.12';
+        setTimeout(() => {
+          cy.resize();
+          cy.fit(undefined, 30);
+        }, 100);
+      } else {
+        wbView.style.display = 'none';
+        radarView.style.display = 'block';
+        pillWb.classList.remove('active');
+        pillRadar.classList.add('active');
+        canvasCont.style.opacity = '1';
+      }
+    }
+
+    function applySeed(val) {
+      document.getElementById('hero-seed-input').value = val;
+    }
+  </script>
+
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <!-- CYTOSCAPE & INVESTIGATION ENGINE SCRIPT                             -->
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <script>
+    const ENTITY_STYLES = {
+      Domain:          { color: '#38bdf8', shape: 'ellipse',   icon: '🌐', label: 'Domain' },
+      Subdomain:       { color: '#7dd3fc', shape: 'ellipse',   icon: '🔗', label: 'Subdomain' },
+      IPv4:            { color: '#fbbf24', shape: 'rectangle', icon: '🖥', label: 'IPv4' },
+      IPv6:            { color: '#f59e0b', shape: 'rectangle', icon: '🖥', label: 'IPv6' },
+      PortService:     { color: '#f43f5e', shape: 'hexagon',   icon: '🔌', label: 'Port' },
+      ThreatScore:     { color: '#ff2a3b', shape: 'octagon',   icon: '⚠️', label: 'Threat' },
+      MaliciousDetection: { color: '#dc2626', shape: 'octagon', icon: '🚨', label: 'Malicious' },
+      Email:           { color: '#c084fc', shape: 'diamond',   icon: '✉️', label: 'Email' },
+      Organization:    { color: '#a78bfa', shape: 'diamond',   icon: '🏢', label: 'Org' },
+      Registrar:       { color: '#818cf8', shape: 'diamond',   icon: '📋', label: 'Registrar' },
+      ASNumber:        { color: '#34d399', shape: 'barrel',    icon: '🌍', label: 'ASN' },
+      CIDRBlock:       { color: '#6ee7b7', shape: 'barrel',    icon: '📡', label: 'CIDR' },
+      SSLCertificate:  { color: '#67e8f9', shape: 'round-rectangle', icon: '🔒', label: 'SSL' },
+      Person:          { color: '#f9a8d4', shape: 'ellipse',   icon: '👤', label: 'Person' },
+      URL:             { color: '#ff7300', shape: 'round-rectangle', icon: '🔗', label: 'URL' },
+      DMARCPolicy:     { color: '#e879f9', shape: 'pentagon',  icon: '🛡', label: 'DMARC' },
+      AbuseReport:     { color: '#fca5a5', shape: 'octagon',   icon: '🚩', label: 'Abuse' },
+      InternetExchange:{ color: '#4ade80', shape: 'barrel',    icon: '🔀', label: 'IX' },
+      ServiceBanner:   { color: '#f43f5e', shape: 'hexagon',   icon: '🏷️', label: 'Banner' },
+      SecurityHeader:  { color: '#38bdf8', shape: 'round-rectangle', icon: '🛡️', label: 'Header' },
+      WAFSignature:    { color: '#ec4899', shape: 'diamond',   icon: '🧱', label: 'WAF' },
+      TLSCertificate:  { color: '#67e8f9', shape: 'round-rectangle', icon: '🔒', label: 'TLSCert' },
+    };
+
+    function getEntityVisual(entityType) {
+      return ENTITY_STYLES[entityType] || { color: '#8E8E9F', shape: 'ellipse', icon: '◉', label: entityType };
+    }
+
+    // Engine State
+    let currentSessionId = null;
+    let evtSource = null;
+    let sseReconnectTimer = null;
+    let selectedNode = null;
+    let ctxNode = null;
+    let transformCount = 0;
+    let currentDepth = 0;
+    let highRiskCount = 0;
+
+    // Accelerated SSE Batch Buffer (Flushed every 35ms via requestAnimationFrame)
+    let batchBuffer = [];
+    let isFlushingBatch = false;
+    const entityCounts = {};
+
+    // Cytoscape Instance
+    const cy = cytoscape({
+      container: document.getElementById('cy'),
+      elements: [],
+      style: [
+        {
+          selector: 'node',
+          style: {
+            'label': 'data(label)',
+            'color': 'data(textColor)',
+            'font-family': 'JetBrains Mono, monospace',
+            'font-size': 11,
+            'font-weight': 600,
+            'text-valign': 'bottom',
+            'text-margin-y': 7,
+            'text-outline-color': '#050507',
+            'text-outline-width': 3,
+            'background-color': 'data(bgColor)',
+            'border-width': 2,
+            'border-color': 'data(borderColor)',
+            'width': 'data(size)',
+            'height': 'data(size)',
+            'shape': 'data(shape)',
+            'opacity': 1,
+            'transition-property': 'border-color, border-width, opacity',
+            'transition-duration': '150ms',
+          }
+        },
+        {
+          selector: 'node:selected',
+          style: {
+            'border-width': 3.5,
+            'border-color': '#ffffff',
+            'overlay-color': '#FF2A3B',
+            'overlay-opacity': 0.25,
+            'overlay-padding': 6,
+          }
+        },
+        {
+          selector: 'node.pinned',
+          style: { 'border-style': 'dashed' }
+        },
+        {
+          selector: 'edge',
+          style: {
+            'width': 1.5,
+            'line-color': 'rgba(255, 115, 0, 0.35)',
+            'target-arrow-color': 'rgba(255, 42, 59, 0.65)',
+            'target-arrow-shape': 'triangle',
+            'curve-style': 'bezier',
+            'label': 'data(label)',
+            'font-size': 9,
+            'color': 'rgba(142, 142, 159, 0.85)',
+            'text-background-color': '#050507',
+            'text-background-opacity': 0.85,
+            'text-background-padding': 2,
+            'font-family': 'JetBrains Mono, monospace',
+            'opacity': 0.85,
+          }
+        },
+        {
+          selector: 'edge:selected',
+          style: {
+            'line-color': '#FF2A3B',
+            'width': 2.5,
+            'opacity': 1,
+          }
+        },
+        {
+          selector: 'node.path-node',
+          style: {
+            'border-color': '#FF7300',
+            'border-width': 4,
+            'overlay-color': '#FF7300',
+            'overlay-opacity': 0.3,
+            'overlay-padding': 8,
+          }
+        },
+        {
+          selector: 'edge.path-edge',
+          style: {
+            'line-color': '#FF7300',
+            'target-arrow-color': '#FF7300',
+            'width': 4,
+            'opacity': 1,
+            'z-index': 999,
+          }
+        },
+        {
+          selector: 'node.delta-added',
+          style: { 'border-color': '#34d399', 'border-width': 4, 'overlay-color': '#34d399', 'overlay-opacity': 0.25 }
+        },
+        {
+          selector: 'node.delta-removed',
+          style: { 'border-color': '#f43f5e', 'border-style': 'dashed', 'border-width': 3, 'opacity': 0.45 }
+        },
+        {
+          selector: 'node.delta-changed',
+          style: { 'border-color': '#fbbf24', 'border-width': 4 }
+        },
+        {
+          selector: 'node:parent',
+          style: {
+            'background-opacity': 0.06,
+            'background-color': '#FF2A3B',
+            'border-color': 'rgba(255, 42, 59, 0.3)',
+            'border-width': 1,
+            'border-style': 'dashed',
+            'label': 'data(label)',
+            'color': '#8E8E9F',
+            'font-size': 11,
+            'font-family': 'JetBrains Mono, monospace',
+            'text-valign': 'top',
+            'text-halign': 'center',
+            'text-margin-y': -8,
+          }
+        },
+        {
+          selector: '.hidden-ego',
+          style: { 'display': 'none' }
+        }
+      ],
+      layout: { name: 'preset' },
+      zoom: 1,
+      minZoom: 0.05,
+      maxZoom: 6,
+      wheelSensitivity: 0.25,
     });
-  } else {
-    propsEl.innerHTML = '<p style="font-size:11px;color:var(--text-muted)">No properties recorded</p>';
-  }
 
-  // Neighbors
-  const neighbors = node.neighborhood().nodes();
-  document.getElementById('insp-neighbor-count').textContent = neighbors.length;
-  const neighborList = document.getElementById('neighbor-list');
-  neighborList.innerHTML = '';
-  neighbors.slice(0, 15).forEach(n => {
-    const chip = document.createElement('div');
-    chip.className = 'neighbor-chip';
-    const nStyle = getStyle(n.data('entityType'));
-    chip.style.borderLeftColor = nStyle.color;
-    chip.style.borderLeftWidth = '3px';
-    chip.textContent = n.data('value');
-    chip.onclick = () => selectNode(n);
-    neighborList.appendChild(chip);
-  });
-}
+    cy.on('tap', 'node', evt => {
+      if (pathMode) { handlePathTap(evt.target); return; }
+      selectNode(evt.target);
+    });
+    cy.on('tap', evt => { if (evt.target === cy) clearInspector(); });
+    cy.on('cxttap', 'node', evt => { openCtxMenu(evt, evt.target); });
+    cy.on('tap', () => closeCtxMenu());
+    cy.on('mouseover', 'node', evt => showTooltip(evt));
+    cy.on('mouseout', 'node', () => hideTooltip());
 
-function clearInspector() {
-  selectedNode = null;
-  document.getElementById('inspector-placeholder').style.display = 'flex';
-  document.getElementById('inspector-content').style.display = 'none';
-}
+    // ═══ HIGH-VELOCITY INVESTIGATION LAUNCHER ══════════════════════════
+    async function launchInvestigation(evt, source) {
+      if (evt) evt.preventDefault();
 
-// ═══════════════════════════════════════════════════════════════════
-// Stats & UI Helpers
-// ═══════════════════════════════════════════════════════════════════
-function updateStats() {
-  document.getElementById('stat-nodes').textContent = cy.nodes().length;
-  document.getElementById('stat-edges').textContent = cy.edges().length;
-}
+      let seed = '';
+      let depth = 2;
 
-function updateEntityBreakdown() {
-  const el = document.getElementById('entity-breakdown');
-  el.innerHTML = '';
-  Object.entries(entityCounts).sort((a,b) => b[1]-a[1]).forEach(([type, count]) => {
-    const style = getStyle(type);
-    const badge = document.createElement('div');
-    badge.className = 'entity-badge';
-    badge.style.borderLeftColor = style.color;
-    badge.innerHTML = `<span style="color:${style.color}">${style.icon} ${style.label}</span><span class="entity-badge-count" style="color:${style.color}">${count}</span>`;
-    el.appendChild(badge);
-  });
-}
+      if (source === 'hero') {
+        seed = document.getElementById('hero-seed-input').value.trim();
+        depth = parseInt(document.getElementById('hero-depth-select').value);
+      }
 
-function logActivity(msg, level = 'info') {
-  const feed = document.getElementById('activity-feed');
-  const item = document.createElement('div');
-  item.className = `activity-item ${level}`;
-  item.textContent = msg;
-  feed.insertBefore(item, feed.firstChild);
-  while (feed.children.length > 50) feed.removeChild(feed.lastChild);
-}
+      if (!seed) return;
 
-function setStatus(state, text) {
-  document.getElementById('status-dot').className = `${state}`;
-  document.getElementById('status-text').textContent = text;
-  const badge = document.getElementById('status-badge');
-  badge.style.borderColor = state === 'error' ? 'rgba(244,63,94,0.4)' : state === 'done' ? 'rgba(56,189,248,0.4)' : 'rgba(52,211,153,0.4)';
-}
+      // Trigger 3D burst & switch view to Investigation Workbench
+      triggerThreeBurst();
+      switchView('workbench');
 
-function finalize() {
-  document.getElementById('investigate-btn').disabled = false;
-  document.getElementById('progress-bar').style.width = '100%';
-  const n = cy.nodes().length, e = cy.edges().length;
-  document.getElementById('progress-label').textContent = `Complete — ${n} nodes, ${e} edges discovered`;
-  setStatus('done', `Done — ${n} nodes, ${e} edges`);
-  logActivity(`✅ Investigation complete: ${n} nodes, ${e} edges`, 'success');
-  setTimeout(() => cy.fit(undefined, 40), 400);
-}
+      clearInvestigation();
+      setEngineStatus('running', `Investigating ${seed}…`);
 
-function clearGraph() {
-  if (evtSource) { evtSource.close(); evtSource = null; }
-  clearTimeout(sseReconnectTimer);
-  clearTimeout(batchFlushTimer);
-  batchBuffer = [];
-  batchFlushTimer = null;
-  cy.elements().remove();
-  Object.keys(entityCounts).forEach(k => delete entityCounts[k]);
-  transformCount = 0; currentDepth = 0;
-  updateStats(); updateEntityBreakdown();
-  clearInspector();
-  setStatus('', 'Idle');
-  document.getElementById('stat-depth').textContent = '—';
-  document.getElementById('stat-transforms').textContent = '0';
-  document.getElementById('progress-bar').style.width = '0%';
-  document.getElementById('progress-label').textContent = 'Ready — enter a seed to begin';
-  document.getElementById('activity-feed').innerHTML = '';
-  currentSessionId = null;
-}
+      document.getElementById('wb-progress-label').textContent = `Spawning asynchronous multi-hop workers for ${seed}…`;
+      document.getElementById('wb-progress-bar').style.width = '8%';
+      transformCount = 0; currentDepth = 0; highRiskCount = 0;
 
-// ═══════════════════════════════════════════════════════════════════
-// Context Menu
-// ═══════════════════════════════════════════════════════════════════
-function openCtxMenu(evt, node) {
-  ctxNode = node;
-  const menu = document.getElementById('ctx-menu');
-  const rendPos = evt.renderedPosition || evt.position;
-  const container = document.getElementById('cy').getBoundingClientRect();
-  menu.style.left = `${container.left + rendPos.x}px`;
-  menu.style.top  = `${container.top  + rendPos.y}px`;
-  menu.style.display = 'block';
-  evt.originalEvent?.stopPropagation();
-}
-function closeCtxMenu() { document.getElementById('ctx-menu').style.display = 'none'; }
-function runTransformOnCtxNode() { if (ctxNode) { selectNode(ctxNode); runTransformOnSelected(); } closeCtxMenu(); }
-function focusOnCtxNode()       { if (ctxNode) focusOnNode(ctxNode); closeCtxMenu(); }
-function pinCtxNode()           { if (ctxNode) ctxNode.toggleClass('pinned'); closeCtxMenu(); }
-function copyCtxUrn()           { if (ctxNode) navigator.clipboard.writeText(ctxNode.data('urn')); closeCtxMenu(); }
-function removeCtxNode()        { if (ctxNode) { ctxNode.remove(); updateStats(); } closeCtxMenu(); }
-function runTransformOnSelected() {
-  if (!selectedNode || !currentSessionId) return;
-  logActivity(`▶ Running transforms on ${selectedNode.data('value')}`, 'info');
-  // Re-investigate from this node
-  document.getElementById('seed-input').value = selectedNode.data('urn');
-  startInvestigation(new Event('submit'));
-}
-function focusOnSelected() { if (selectedNode) focusOnNode(selectedNode); }
-function focusOnNode(node) {
-  cy.elements().style('opacity', 0.1);
-  const ego = node.closedNeighborhood();
-  ego.style('opacity', 1);
-  cy.animate({ fit: { eles: ego, padding: 60 }, duration: 400, easing: 'ease-in-out-cubic' });
-}
-function copyUrn() { if (selectedNode) navigator.clipboard.writeText(selectedNode.data('urn')); }
+      pushTelemetryRow('OK', `Initializing investigation session for: ${seed}`);
+      logActivity(`🚀 Initializing crawl on ${seed} (depth ${depth})`, 'info');
 
-// ═══════════════════════════════════════════════════════════════════
-// Tooltip
-// ═══════════════════════════════════════════════════════════════════
-function showTooltip(evt) {
-  const data = evt.target.data();
-  const style = getStyle(data.entityType);
-  const tip = document.getElementById('tooltip');
-  tip.innerHTML = `<strong style="color:${style.color}">${style.icon} ${data.entityType}</strong><br><span style="font-family:monospace;font-size:11px">${data.value}</span>`;
-  tip.style.display = 'block';
-  document.addEventListener('mousemove', moveTooltip);
-}
-function hideTooltip() {
-  document.getElementById('tooltip').style.display = 'none';
-  document.removeEventListener('mousemove', moveTooltip);
-}
-function moveTooltip(e) {
-  const tip = document.getElementById('tooltip');
-  tip.style.left = `${e.clientX + 14}px`;
-  tip.style.top  = `${e.clientY - 8}px`;
-}
+      try {
+        const res = await fetch('/api/v1/investigations/start', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ seed, max_depth: depth }),
+        });
 
-// ═══════════════════════════════════════════════════════════════════
-// Layout & Physics
-// ═══════════════════════════════════════════════════════════════════
-function runLayout() {
-  if (cy.nodes().length === 0) return;
-  cy.layout({
-    name: 'fcose', quality: 'proof', randomize: false, fit: true,
-    animate: true, animationDuration: 600, animationEasing: 'ease-out',
-    nodeRepulsion: () => 8000, idealEdgeLength: () => 90,
-    edgeElasticity: () => 0.45, gravity: 0.3, gravityRange: 4,
-    numIter: 5000,
-  }).run();
-}
-function togglePhysics() {
-  physicsEnabled = !physicsEnabled;
-  document.getElementById('physics-btn').style.color = physicsEnabled ? 'var(--accent)' : 'var(--text-muted)';
-}
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          setEngineStatus('error', err.detail || 'Failed to start investigation');
+          logActivity(`Error starting investigation: ${err.detail || 'Failed'}`, 'error');
+          return;
+        }
 
-// ═══════════════════════════════════════════════════════════════════
-// Export
-// ═══════════════════════════════════════════════════════════════════
-function openExportModal()  { document.getElementById('export-modal').classList.add('open'); }
-function closeExportModal() { document.getElementById('export-modal').classList.remove('open'); }
-function doExport(format) {
-  if (!currentSessionId) {
-    logActivity('No active investigation to export', 'error');
-    closeExportModal(); return;
-  }
-  const url = `/api/v1/investigations/${currentSessionId}/export/${format}`;
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `heimdall_${currentSessionId.slice(0,8)}.${format}`;
-  document.body.appendChild(a); a.click(); document.body.removeChild(a);
-  closeExportModal();
-  logActivity(`⬇ Exporting graph as ${format.toUpperCase()}`, 'info');
-}
-
-// ═══════════════════════════════════════════════════════════════════
-// Phase 5: A* Pathfinding, Ego-Net, Grouping & Temporal Diff
-// ═══════════════════════════════════════════════════════════════════
-let pathMode = false;
-let pathSelection = [];
-
-function togglePathMode() {
-  pathMode = !pathMode;
-  pathSelection = [];
-  cy.elements().removeClass('path-node path-edge');
-  const btn = document.getElementById('path-mode-btn');
-  if (pathMode) {
-    btn.style.borderColor = '#fbbf24';
-    btn.style.color = '#fbbf24';
-    setStatus('running', 'Path Mode: Click 1st node (Source), then 2nd node (Target)');
-  } else {
-    btn.style.borderColor = '';
-    btn.style.color = '';
-    setStatus('done', 'Path mode exited');
-  }
-}
-
-function handlePathTap(node) {
-  pathSelection.push(node);
-  node.addClass('path-node');
-  if (pathSelection.length === 2) {
-    const src = pathSelection[0];
-    const tgt = pathSelection[1];
-    const aStar = cy.elements().aStar({ root: src, goal: tgt, directed: false });
-    if (aStar.found) {
-      aStar.path.edges().addClass('path-edge');
-      aStar.path.nodes().addClass('path-node');
-      logActivity(`⚡ Shortest path: ${aStar.distance} hops from ${src.data('label')} to ${tgt.data('label')}`, 'success');
-      setStatus('done', `Path found: ${aStar.distance} hops`);
-    } else {
-      logActivity(`No path found between ${src.data('label')} and ${tgt.data('label')}`, 'error');
-      setStatus('error', 'No path found between selected nodes');
+        const data = await res.json();
+        currentSessionId = data.session_id;
+        connectSseStream(data.session_id);
+      } catch (e) {
+        setEngineStatus('error', 'Network error reaching Heimdall engine');
+        logActivity(`Network error: ${e.message}`, 'error');
+      }
     }
-    pathMode = false;
-    document.getElementById('path-mode-btn').style.borderColor = '';
-    document.getElementById('path-mode-btn').style.color = '';
-  }
-}
 
-function onEgoRadiusChange(val) {
-  const label = document.getElementById('ego-radius-val');
-  if (!selectedNode || val >= 4) {
-    label.textContent = 'All';
-    cy.elements().removeClass('hidden-ego');
-    return;
-  }
-  const radius = parseInt(val);
-  label.textContent = `${radius} hop${radius > 1 ? 's' : ''}`;
+    function connectSseStream(sessionId, retry = 0) {
+      if (evtSource) { evtSource.close(); evtSource = null; }
+      clearTimeout(sseReconnectTimer);
 
-  const neighborhood = cy.elements().bfs({
-    roots: selectedNode,
-    directed: false,
-    visit: (v, e, u, i, depth) => {
-      if (depth > radius) return false;
+      evtSource = new EventSource(`/api/v1/investigations/${sessionId}/events`);
+
+      evtSource.addEventListener('message', evt => {
+        try {
+          const payload = JSON.parse(evt.data);
+          handleSseEvent(payload);
+        } catch {}
+      });
+
+      ['INVESTIGATION_STARTED','DEPTH_STARTED','TRANSFORM_COMPLETED',
+       'EDGE_DISCOVERED','INVESTIGATION_COMPLETED','ERROR','STREAM_END'].forEach(evName => {
+        evtSource.addEventListener(evName, evt => {
+          try { handleSseEvent({ type: evName, data: JSON.parse(evt.data || '{}') }); } catch {}
+        });
+      });
+
+      evtSource.onerror = () => {
+        if (retry < 5) {
+          const delay = Math.min(400 * Math.pow(1.8, retry), 6000);
+          setEngineStatus('running', `Reconnecting stream in ${Math.round(delay/1000)}s…`);
+          sseReconnectTimer = setTimeout(() => connectSseStream(sessionId, retry + 1), delay);
+        } else {
+          setEngineStatus('done', 'Investigation stream completed');
+          finalizeInvestigation();
+        }
+      };
     }
-  });
 
-  const keep = neighborhood.path;
-  cy.elements().not(keep).addClass('hidden-ego');
-  keep.removeClass('hidden-ego');
-}
+    function handleSseEvent(payload) {
+      const { type, data } = payload;
+      switch (type) {
+        case 'DEPTH_STARTED':
+          currentDepth = data.depth || currentDepth + 1;
+          const maxDepth = parseInt(document.getElementById('hero-depth-select').value) || 2;
+          document.getElementById('wb-progress-bar').style.width = `${Math.min(92, (currentDepth / maxDepth) * 85 + 10)}%`;
+          document.getElementById('wb-progress-label').textContent = `Depth ${currentDepth}/${maxDepth} — ${data.frontier_size || 0} entities queued`;
+          document.getElementById('stat-depth-badge').textContent = `DEPTH ${currentDepth}`;
+          pushTelemetryRow('OK', `Depth ${currentDepth} initiated: ${data.frontier_size || 0} targets queued`);
+          break;
 
-let isGrouped = false;
-function toggleGroupByType() {
-  isGrouped = !isGrouped;
-  const btn = document.getElementById('group-btn');
-  if (isGrouped) {
-    btn.style.borderColor = 'var(--accent)';
-    btn.style.color = 'var(--accent)';
-    const types = new Set(cy.nodes().filter(n => !n.isParent()).map(n => n.data('entityType')));
-    cy.batch(() => {
-      types.forEach(t => {
-        const parentId = `group_${t}`;
-        if (cy.$id(parentId).length === 0) {
-          cy.add({
-            group: 'nodes',
-            data: { id: parentId, label: `${t}s`, isParentGroup: true }
+        case 'TRANSFORM_COMPLETED':
+          transformCount++;
+          document.getElementById('stat-transforms').textContent = transformCount;
+          if (data.status === 'SUCCESS' && data.edges_count > 0) {
+            logActivity(`✓ ${data.transform} → +${data.edges_count} edges`, 'success');
+            pushTelemetryRow('OK', `${data.transform} generated ${data.edges_count} edges for ${data.entity?.split(':')[1] || ''}`);
+          }
+          break;
+
+        case 'EDGE_DISCOVERED':
+          // Push into accelerated buffer
+          batchBuffer.push(data);
+          if (!isFlushingBatch) {
+            isFlushingBatch = true;
+            requestAnimationFrame(flushBatchBuffer);
+          }
+          break;
+
+        case 'INVESTIGATION_COMPLETED':
+        case 'STREAM_END':
+          flushBatchBuffer();
+          if (evtSource) { evtSource.close(); evtSource = null; }
+          finalizeInvestigation();
+          break;
+
+        case 'ERROR':
+          logActivity(`✗ ${data.error || 'Pipeline error'}`, 'error');
+          pushTelemetryRow('CRIT', `Transform error: ${data.error || 'Execution failure'}`);
+          break;
+      }
+    }
+
+    // High-Velocity 35ms Buffer Flush using requestAnimationFrame
+    function flushBatchBuffer() {
+      isFlushingBatch = false;
+      if (batchBuffer.length === 0) return;
+
+      const items = batchBuffer.splice(0, batchBuffer.length);
+      const toAdd = [];
+
+      items.forEach(edge => {
+        const srcType  = edge.source?.split(':')[0] || 'Unknown';
+        const tgtType  = edge.target_type || edge.target?.split(':')[0] || 'Unknown';
+        const srcStyle = getEntityVisual(srcType);
+        const tgtStyle = getEntityVisual(tgtType);
+
+        if (!cy.getElementById(edge.source).length) {
+          entityCounts[srcType] = (entityCounts[srcType] || 0) + 1;
+          toAdd.push({ group: 'nodes', data: buildNodeData(edge.source, srcType, srcStyle) });
+        }
+        if (!cy.getElementById(edge.target).length) {
+          entityCounts[tgtType] = (entityCounts[tgtType] || 0) + 1;
+          if (tgtType === 'ThreatScore' || tgtType === 'MaliciousDetection') highRiskCount++;
+          toAdd.push({ group: 'nodes', data: buildNodeData(edge.target, tgtType, tgtStyle) });
+        }
+        const edgeId = `${edge.source}|${edge.rel}|${edge.target}`;
+        if (!cy.getElementById(edgeId).length) {
+          toAdd.push({
+            group: 'edges',
+            data: { id: edgeId, source: edge.source, target: edge.target, label: edge.rel?.replace(/_/g,' ').toLowerCase() || '' }
           });
         }
       });
-      cy.nodes().filter(n => !n.data('isParentGroup')).forEach(n => {
-        const t = n.data('entityType');
-        n.move({ parent: `group_${t}` });
+
+      if (toAdd.length === 0) return;
+
+      cy.batch(() => {
+        cy.add(toAdd);
       });
-    });
-    runLayout();
-    logActivity('🗂 Nodes grouped by entity type', 'info');
-  } else {
-    btn.style.borderColor = '';
-    btn.style.color = '';
-    cy.batch(() => {
-      cy.nodes().filter(n => !n.data('isParentGroup')).forEach(n => {
-        n.move({ parent: null });
-      });
-      cy.nodes().filter(n => n.data('isParentGroup')).remove();
-    });
-    runLayout();
-    logActivity('Node grouping cleared', 'info');
-  }
-}
 
-function openDiffModal() {
-  document.getElementById('diff-modal').style.display = 'flex';
-  if (currentSessionId) {
-    document.getElementById('diff-session-b').value = currentSessionId;
-  }
-}
+      updateStatsUI();
+      updateEntityBreakdownUI();
 
-function closeDiffModal() {
-  document.getElementById('diff-modal').style.display = 'none';
-}
-
-async function executeDiffComparison() {
-  const sessionA = document.getElementById('diff-session-a').value.trim();
-  const sessionB = document.getElementById('diff-session-b').value.trim();
-  if (!sessionA || !sessionB) {
-    alert('Please provide both Session A and Session B identifiers.');
-    return;
-  }
-  closeDiffModal();
-  logActivity(`Computing temporal diff between ${sessionA.slice(0,8)} and ${sessionB.slice(0,8)}…`, 'info');
-  try {
-    const res = await fetch(`/api/v1/diff/${sessionA}/${sessionB}`);
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.detail || 'Diff computation failed');
+      // Rapid incremental layout — animate: false during continuous streaming to prevent frame lag!
+      cy.layout({
+        name: 'fcose',
+        quality: 'default',
+        randomize: false,
+        fit: false,
+        animate: false,
+        nodeDimensionsIncludeLabels: true,
+        packComponents: true,
+        nodeRepulsion: () => 7000,
+        idealEdgeLength: () => 85,
+        edgeElasticity: () => 0.45,
+        gravity: 0.25,
+        numIter: 400,
+      }).run();
     }
-    const delta = await res.json();
-    cy.batch(() => {
-      (delta.added_nodes || []).forEach(n => {
-        const node = cy.$id(n.urn);
-        if (node.length) node.addClass('delta-added');
+
+    function buildNodeData(urn, entityType, style) {
+      const val = urn.split(':', 2)[1] || urn;
+      const isHighThreat = entityType === 'ThreatScore' || entityType === 'MaliciousDetection' || entityType === 'AbuseReport';
+      return {
+        id: urn, urn, entityType,
+        value: val,
+        label: val.length > 20 ? val.slice(0, 18) + '…' : val,
+        bgColor: style.color + '18',
+        borderColor: style.color,
+        textColor: style.color,
+        shape: style.shape,
+        size: isHighThreat ? 38 : (entityType === 'Domain' || entityType === 'IPv4' ? 34 : 26),
+      };
+    }
+
+    // Node Inspector logic
+    function selectNode(node) {
+      selectedNode = node;
+      cy.elements().unselect();
+      node.select();
+
+      const data = node.data();
+      const style = getEntityVisual(data.entityType);
+
+      document.getElementById('inspector-placeholder').style.display = 'none';
+      const content = document.getElementById('inspector-content');
+      content.style.display = 'flex';
+
+      const icon = document.getElementById('insp-icon');
+      icon.textContent = style.icon;
+      icon.style.background = style.color + '22';
+      icon.style.border = `1px solid ${style.color}44`;
+
+      document.getElementById('insp-value').textContent = data.value;
+      const typeTag = document.getElementById('insp-type-tag');
+      typeTag.textContent = style.label;
+      typeTag.style.background = style.color + '22';
+      typeTag.style.color = style.color;
+
+      const props = data.properties || {};
+      const threatScore = props.threat_score;
+      const threatSection = document.getElementById('insp-threat-section');
+      if (typeof threatScore === 'number') {
+        threatSection.style.display = 'block';
+        const bar = document.getElementById('threat-bar');
+        const label = document.getElementById('threat-score-label');
+        const [bg, risk] = threatScore >= 75 ? ['#FF2A3B','Critical Exposure'] : threatScore >= 50 ? ['#FF7300','Elevated Risk'] : threatScore >= 25 ? ['#fbbf24','Moderate'] : ['#34d399','Benign / Low'];
+        bar.style.width = `${threatScore}%`;
+        bar.style.background = bg;
+        label.textContent = `${threatScore}/100 — ${risk}`;
+        label.style.color = bg;
+      } else {
+        threatSection.style.display = 'none';
+      }
+
+      const propsEl = document.getElementById('insp-props');
+      propsEl.innerHTML = '';
+      const displayProps = { ...props };
+      delete displayProps.threat_score;
+      delete displayProps.risk_level;
+      const keys = Object.keys(displayProps);
+      if (keys.length) {
+        keys.slice(0, 14).forEach(k => {
+          const row = document.createElement('div');
+          row.className = 'prop-row';
+          const v = displayProps[k];
+          row.innerHTML = `<span class="prop-key">${k}</span><span class="prop-val">${Array.isArray(v) ? v.slice(0,3).join(', ') : String(v).slice(0,60)}</span>`;
+          propsEl.appendChild(row);
+        });
+      } else {
+        propsEl.innerHTML = '<p style="font-size:0.7rem;color:var(--text-dim);font-family:var(--font-mono)">No additional attributes</p>';
+      }
+
+      const neighbors = node.neighborhood().nodes();
+      document.getElementById('insp-neighbor-count').textContent = neighbors.length;
+      const neighborList = document.getElementById('neighbor-list');
+      neighborList.innerHTML = '';
+      neighbors.slice(0, 15).forEach(n => {
+        const chip = document.createElement('div');
+        chip.className = 'neighbor-chip';
+        const nStyle = getEntityVisual(n.data('entityType'));
+        chip.style.borderLeftColor = nStyle.color;
+        chip.style.borderLeftWidth = '3px';
+        chip.textContent = n.data('value');
+        chip.onclick = () => selectNode(n);
+        neighborList.appendChild(chip);
       });
-      (delta.removed_nodes || []).forEach(n => {
-        const node = cy.$id(n.urn);
-        if (node.length) node.addClass('delta-removed');
+    }
+
+    function clearInspector() {
+      selectedNode = null;
+      document.getElementById('inspector-placeholder').style.display = 'flex';
+      document.getElementById('inspector-content').style.display = 'none';
+    }
+
+    function updateStatsUI() {
+      document.getElementById('stat-nodes').textContent = cy.nodes().length;
+      document.getElementById('stat-edges').textContent = cy.edges().length;
+      document.getElementById('stat-threat-count').textContent = highRiskCount;
+    }
+
+    function updateEntityBreakdownUI() {
+      const el = document.getElementById('entity-breakdown');
+      el.innerHTML = '';
+      Object.entries(entityCounts).sort((a,b) => b[1]-a[1]).forEach(([type, count]) => {
+        const style = getEntityVisual(type);
+        const badge = document.createElement('div');
+        badge.className = 'entity-badge';
+        badge.style.borderLeftColor = style.color;
+        badge.innerHTML = `<span style="color:${style.color}">${style.icon} ${style.label}</span><span class="entity-badge-count" style="color:${style.color}">${count}</span>`;
+        el.appendChild(badge);
       });
-      Object.keys(delta.changed_props || {}).forEach(urn => {
-        const node = cy.$id(urn);
-        if (node.length) node.addClass('delta-changed');
+    }
+
+    function logActivity(msg, level = 'info') {
+      const feed = document.getElementById('activity-feed');
+      const item = document.createElement('div');
+      item.className = `activity-item ${level}`;
+      item.textContent = msg;
+      feed.insertBefore(item, feed.firstChild);
+      while (feed.children.length > 40) feed.removeChild(feed.lastChild);
+    }
+
+    function setEngineStatus(state, text) {
+      document.getElementById('status-dot').className = state;
+      document.getElementById('status-text').textContent = text;
+    }
+
+    function finalizeInvestigation() {
+      document.getElementById('wb-progress-bar').style.width = '100%';
+      const n = cy.nodes().length, e = cy.edges().length;
+      document.getElementById('wb-progress-label').textContent = `Investigation finalized: ${n} entities, ${e} links discovered`;
+      setEngineStatus('done', `Crawl Complete — ${n} Nodes`);
+      logActivity(`✅ Investigation finalized: ${n} nodes, ${e} edges`, 'success');
+      pushTelemetryRow('OK', `Investigation finished: ${n} assets analyzed with ${e} links`);
+      setTimeout(() => {
+        cy.layout({
+          name: 'fcose',
+          quality: 'proof',
+          fit: true,
+          animate: true,
+          animationDuration: 500,
+          numIter: 1000,
+        }).run();
+      }, 200);
+    }
+
+    function clearInvestigation() {
+      if (evtSource) { evtSource.close(); evtSource = null; }
+      clearTimeout(sseReconnectTimer);
+      batchBuffer = [];
+      cy.elements().remove();
+      Object.keys(entityCounts).forEach(k => delete entityCounts[k]);
+      transformCount = 0; currentDepth = 0; highRiskCount = 0;
+      updateStatsUI(); updateEntityBreakdownUI();
+      clearInspector();
+      setEngineStatus('', 'Engine Ready');
+      document.getElementById('stat-depth-badge').textContent = 'DEPTH 0';
+      document.getElementById('stat-transforms').textContent = '0';
+      document.getElementById('stat-threat-count').textContent = '0';
+      document.getElementById('wb-progress-bar').style.width = '0%';
+      document.getElementById('wb-progress-label').textContent = 'Ready — enter a target seed';
+      document.getElementById('activity-feed').innerHTML = '';
+      currentSessionId = null;
+    }
+
+    function runFastLayout() {
+      if (cy.nodes().length === 0) return;
+      cy.layout({
+        name: 'fcose',
+        quality: 'default',
+        fit: true,
+        animate: true,
+        animationDuration: 400,
+        numIter: 800,
+      }).run();
+    }
+
+    // Context Menu Handlers
+    function openCtxMenu(evt, node) {
+      ctxNode = node;
+      const menu = document.getElementById('ctx-menu');
+      const rendPos = evt.renderedPosition || evt.position;
+      const container = document.getElementById('cy').getBoundingClientRect();
+      menu.style.left = `${container.left + rendPos.x}px`;
+      menu.style.top  = `${container.top  + rendPos.y}px`;
+      menu.style.display = 'block';
+      evt.originalEvent?.stopPropagation();
+    }
+    function closeCtxMenu() { document.getElementById('ctx-menu').style.display = 'none'; }
+    function pivotFromCtxNode() { if (ctxNode) { selectNode(ctxNode); pivotFromSelected(); } closeCtxMenu(); }
+    function focusOnCtxNode() { if (ctxNode) focusOnNode(ctxNode); closeCtxMenu(); }
+    function pinCtxNode() { if (ctxNode) ctxNode.toggleClass('pinned'); closeCtxMenu(); }
+    function copyCtxUrn() { if (ctxNode) navigator.clipboard.writeText(ctxNode.data('urn')); closeCtxMenu(); }
+    function removeCtxNode() { if (ctxNode) { ctxNode.remove(); updateStatsUI(); } closeCtxMenu(); }
+
+    function pivotFromSelected() {
+      if (!selectedNode) return;
+      document.getElementById('hero-seed-input').value = selectedNode.data('urn');
+      launchInvestigation(null, 'hero');
+    }
+    function focusOnSelected() { if (selectedNode) focusOnNode(selectedNode); }
+    function focusOnNode(node) {
+      cy.elements().style('opacity', 0.12);
+      const ego = node.closedNeighborhood();
+      ego.style('opacity', 1);
+      cy.animate({ fit: { eles: ego, padding: 50 }, duration: 400, easing: 'ease-in-out-cubic' });
+    }
+    function copySelectedUrn() { if (selectedNode) navigator.clipboard.writeText(selectedNode.data('urn')); }
+
+    // Tooltip
+    function showTooltip(evt) {
+      const data = evt.target.data();
+      const style = getEntityVisual(data.entityType);
+      const tip = document.getElementById('tooltip');
+      tip.innerHTML = `<strong style="color:${style.color}">${style.icon} ${data.entityType}</strong><br><span style="color:#FFF">${data.value}</span>`;
+      tip.style.display = 'block';
+      document.addEventListener('mousemove', moveTooltip);
+    }
+    function hideTooltip() {
+      document.getElementById('tooltip').style.display = 'none';
+      document.removeEventListener('mousemove', moveTooltip);
+    }
+    function moveTooltip(e) {
+      const tip = document.getElementById('tooltip');
+      tip.style.left = `${e.clientX + 14}px`;
+      tip.style.top  = `${e.clientY - 8}px`;
+    }
+
+    // A* Pathfinding Mode
+    let pathMode = false;
+    let pathSelection = [];
+    function togglePathMode() {
+      pathMode = !pathMode;
+      pathSelection = [];
+      cy.elements().removeClass('path-node path-edge');
+      const btn = document.getElementById('path-mode-btn');
+      if (pathMode) {
+        btn.style.borderColor = '#FF7300';
+        btn.style.color = '#FF7300';
+        setEngineStatus('running', 'Path Mode: Click Source node, then Target node');
+      } else {
+        btn.style.borderColor = '';
+        btn.style.color = '';
+        setEngineStatus('done', 'Path mode cleared');
+      }
+    }
+
+    function handlePathTap(node) {
+      pathSelection.push(node);
+      node.addClass('path-node');
+      if (pathSelection.length === 2) {
+        const src = pathSelection[0];
+        const tgt = pathSelection[1];
+        const aStar = cy.elements().aStar({ root: src, goal: tgt, directed: false });
+        if (aStar.found) {
+          aStar.path.edges().addClass('path-edge');
+          aStar.path.nodes().addClass('path-node');
+          logActivity(`⚡ Shortest path: ${aStar.distance} hops from ${src.data('label')} to ${tgt.data('label')}`, 'success');
+          setEngineStatus('done', `Path found: ${aStar.distance} hops`);
+        } else {
+          logActivity(`No path found between ${src.data('label')} and ${tgt.data('label')}`, 'error');
+          setEngineStatus('error', 'No path found between nodes');
+        }
+        pathMode = false;
+        document.getElementById('path-mode-btn').style.borderColor = '';
+        document.getElementById('path-mode-btn').style.color = '';
+      }
+    }
+
+    function onEgoRadiusChange(val) {
+      const label = document.getElementById('ego-radius-val');
+      if (!selectedNode || val >= 4) {
+        label.textContent = 'All';
+        cy.elements().removeClass('hidden-ego');
+        return;
+      }
+      const radius = parseInt(val);
+      label.textContent = `${radius} hop${radius > 1 ? 's' : ''}`;
+      const neighborhood = cy.elements().bfs({
+        roots: selectedNode,
+        directed: false,
+        visit: (v, e, u, i, depth) => {
+          if (depth > radius) return false;
+        }
+      });
+      const keep = neighborhood.path;
+      cy.elements().not(keep).addClass('hidden-ego');
+      keep.removeClass('hidden-ego');
+    }
+
+    let isGrouped = false;
+    function toggleGroupByType() {
+      isGrouped = !isGrouped;
+      const btn = document.getElementById('group-btn');
+      if (isGrouped) {
+        btn.style.borderColor = 'var(--red-primary)';
+        btn.style.color = 'var(--red-primary)';
+        const types = new Set(cy.nodes().filter(n => !n.isParent()).map(n => n.data('entityType')));
+        cy.batch(() => {
+          types.forEach(t => {
+            const parentId = `group_${t}`;
+            if (cy.$id(parentId).length === 0) {
+              cy.add({ group: 'nodes', data: { id: parentId, label: `${t} Cluster`, isParentGroup: true } });
+            }
+          });
+          cy.nodes().filter(n => !n.data('isParentGroup')).forEach(n => {
+            n.move({ parent: `group_${n.data('entityType')}` });
+          });
+        });
+        runFastLayout();
+        logActivity('🗂 Clustered nodes by entity classification', 'info');
+      } else {
+        btn.style.borderColor = '';
+        btn.style.color = '';
+        cy.batch(() => {
+          cy.nodes().filter(n => !n.data('isParentGroup')).forEach(n => n.move({ parent: null }));
+          cy.nodes().filter(n => n.data('isParentGroup')).remove();
+        });
+        runFastLayout();
+        logActivity('Entity clusters removed', 'info');
+      }
+    }
+
+    // Export Modals
+    function openExportModal() { document.getElementById('export-modal').classList.add('open'); }
+    function closeExportModal() { document.getElementById('export-modal').classList.remove('open'); }
+    function doExport(format) {
+      if (!currentSessionId) {
+        logActivity('No active investigation session to export', 'error');
+        closeExportModal(); return;
+      }
+      const url = `/api/v1/investigations/${currentSessionId}/export/${format}`;
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `heimdall_${currentSessionId.slice(0,8)}.${format}`;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      closeExportModal();
+      logActivity(`⬇ Exporting graph artifact as ${format.toUpperCase()}`, 'info');
+    }
+    function exportPng() {
+      const png64 = cy.png({ bg: '#050507', full: true, scale: 2 });
+      const a = document.createElement('a');
+      a.href = png64;
+      a.download = `heimdall_recon_${Date.now()}.png`;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      closeExportModal();
+      logActivity('⬇ Exported high-res PNG graph capture', 'info');
+    }
+
+    // Diff Modal
+    function openDiffModal() {
+      document.getElementById('diff-modal').classList.add('open');
+      if (currentSessionId) document.getElementById('diff-session-b').value = currentSessionId;
+    }
+    function closeDiffModal() { document.getElementById('diff-modal').classList.remove('open'); }
+    async function executeDiffComparison() {
+      const a = document.getElementById('diff-session-a').value.trim();
+      const b = document.getElementById('diff-session-b').value.trim();
+      if (!a || !b) { alert('Please provide both Session A and Session B identifiers.'); return; }
+      closeDiffModal();
+      logActivity(`Computing temporal graph delta between ${a.slice(0,8)} and ${b.slice(0,8)}…`, 'info');
+      try {
+        const res = await fetch(`/api/v1/diff/${a}/${b}`);
+        if (!res.ok) throw new Error((await res.json()).detail || 'Diff computation error');
+        const delta = await res.json();
+        cy.batch(() => {
+          (delta.added_nodes || []).forEach(n => { const node = cy.$id(n.urn); if (node.length) node.addClass('delta-added'); });
+          (delta.removed_nodes || []).forEach(n => { const node = cy.$id(n.urn); if (node.length) node.addClass('delta-removed'); });
+          Object.keys(delta.changed_props || {}).forEach(urn => { const node = cy.$id(urn); if (node.length) node.addClass('delta-changed'); });
+        });
+        logActivity(`Diff analysis ready: ${delta.summary}`, 'success');
+      } catch (e) {
+        logActivity(`Diff failed: ${e.message}`, 'error');
+      }
+    }
+
+    // Modal click-outside to close
+    ['export-modal', 'diff-modal'].forEach(mId => {
+      document.getElementById(mId).addEventListener('click', e => {
+        if (e.target === document.getElementById(mId)) {
+          document.getElementById(mId).classList.remove('open');
+        }
       });
     });
-    logActivity(`Diff loaded: ${delta.summary}`, 'success');
-  } catch (err) {
-    logActivity(`Diff error: ${err.message}`, 'error');
-  }
-}
 
-// Close modals on backdrop click
-document.getElementById('export-modal')?.addEventListener('click', e => {
-  if (e.target === document.getElementById('export-modal')) closeExportModal();
-});
-document.getElementById('diff-modal')?.addEventListener('click', e => {
-  if (e.target === document.getElementById('diff-modal')) closeDiffModal();
-});
-
-// Keyboard shortcuts
-document.addEventListener('keydown', e => {
-  if ((e.ctrlKey || e.metaKey) && e.key === 'e') { e.preventDefault(); openExportModal(); }
-  if ((e.ctrlKey || e.metaKey) && e.key === 'f') { e.preventDefault(); document.getElementById('seed-input').focus(); }
-  if (e.key === 'Escape') { closeExportModal(); closeDiffModal(); closeCtxMenu(); }
-  if (e.key === 'Delete' && selectedNode) { selectedNode.remove(); updateStats(); clearInspector(); }
-});
-</script>
+    // Keyboard Shortcuts
+    document.addEventListener('keydown', e => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'e') { e.preventDefault(); openExportModal(); }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'f') { e.preventDefault(); document.getElementById('hero-seed-input').focus(); }
+      if (e.key === 'Escape') { closeExportModal(); closeDiffModal(); closeCtxMenu(); }
+      if (e.key === 'Delete' && selectedNode) { selectedNode.remove(); updateStatsUI(); clearInspector(); }
+    });
+  </script>
 </body>
 </html>
