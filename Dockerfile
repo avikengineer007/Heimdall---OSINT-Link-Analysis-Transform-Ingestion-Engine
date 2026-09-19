@@ -7,13 +7,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     && rm -rf /var/lib/apt/lists/*
 
-COPY pyproject.toml README.md ./
-COPY heimdall ./heimdall
+# Hugging Face Spaces runs as user with UID 1000
+RUN useradd -m -u 1000 user
+ENV HOME=/home/user \
+    PATH=/home/user/.local/bin:$PATH
+
+COPY --chown=user:user pyproject.toml README.md ./
+COPY --chown=user:user heimdall ./heimdall
 
 RUN pip install --no-cache-dir .
 
+RUN chown -R user:user /app
+
+USER user
+
 ENV HOST=0.0.0.0
-ENV PORT=8000
-EXPOSE 8000
+ENV PORT=7860
+EXPOSE 7860
 
 CMD ["python", "-m", "heimdall.cli", "serve", "--host", "0.0.0.0"]
