@@ -10,7 +10,7 @@ from unittest.mock import patch
 def test_default_settings():
     """Settings should load with safe defaults when no .env is present."""
     from heimdall.core.config import HeimdallSettings
-    s = HeimdallSettings()
+    s = HeimdallSettings(_env_file=None)
     assert s.neo4j_uri == "bolt://localhost:7687"
     assert s.cache_ttl_seconds == 3600
     assert s.cache_max_size == 2048
@@ -23,7 +23,7 @@ def test_default_settings():
 def test_api_keys_none_by_default():
     """All API keys should default to None (no required keys)."""
     from heimdall.core.config import HeimdallSettings
-    s = HeimdallSettings()
+    s = HeimdallSettings(_env_file=None)
     assert s.shodan_api_key is None
     assert s.virustotal_api_key is None
     assert s.abuseipdb_api_key is None

@@ -214,6 +214,9 @@ class SqliteGraphStore(BaseGraphStore):
     def get_nodes(self) -> List[GraphNode]:
         return self._memory.get_nodes()
 
+    def get_node(self, urn: str) -> Optional[GraphNode]:
+        return self._memory.get_node(urn)
+
     def get_stats(self) -> Dict[str, Any]:
         stats = self._memory.get_stats()
         stats["backend"] = "sqlite" if self._db_path else "memory_fallback"
