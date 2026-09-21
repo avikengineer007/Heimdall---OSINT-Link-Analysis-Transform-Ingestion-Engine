@@ -26,3 +26,6 @@ starlette==1.6.0
 typing-inspection==0.4.4
 typing_extensions==4.16.0
 uvicorn==0.53.0
+cachetools>=5.5.0
+aiosqlite>=0.20.0
+pyyaml>=6.0

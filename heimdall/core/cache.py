@@ -12,22 +12,30 @@ from __future__ import annotations
 
 import hashlib
 import logging
-from typing import Optional
-
-from cachetools import TTLCache
+from typing import Any, Optional
+try:
+    from cachetools import TTLCache
+    _HAS_CACHETOOLS = True
+except ImportError:
+    TTLCache = None  # type: ignore
+    _HAS_CACHETOOLS = False
 
 from heimdall.core.models import TransformResult
 
 logger = logging.getLogger("heimdall.cache")
 
 # Module-level singleton — lazily initialized from settings on first use
-_cache: Optional[TTLCache] = None
+_cache: Optional[Any] = None
 _cache_enabled: bool = True
 
 
-def _get_cache() -> Optional[TTLCache]:
+def _get_cache() -> Optional[Any]:
     """Returns the shared TTLCache instance, initializing it on first call."""
     global _cache, _cache_enabled
+    if not _HAS_CACHETOOLS:
+        _cache_enabled = False
+        return None
+
     if _cache is None:
         try:
             from heimdall.core.config import settings
