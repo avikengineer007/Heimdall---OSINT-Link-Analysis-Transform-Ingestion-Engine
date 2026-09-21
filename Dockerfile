@@ -22,7 +22,8 @@ RUN chown -R user:user /app
 USER user
 
 ENV HOST=0.0.0.0
-EXPOSE 8000
+ENV PORT=7860
+EXPOSE 7860
 
 CMD ["python", "-m", "heimdall.cli", "serve", "--host", "0.0.0.0"]
 
