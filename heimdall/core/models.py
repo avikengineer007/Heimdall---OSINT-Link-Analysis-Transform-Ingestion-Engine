@@ -18,8 +18,11 @@ class EntityType(str, enum.Enum):
     SUBDOMAIN = "Subdomain"
     IPV4 = "IPv4"
     IPV6 = "IPv6"
+    PORT = "Port"
+    SERVICE = "PortService"
     PORT_SERVICE = "PortService"
     ORGANIZATION = "Organization"
+
     REGISTRAR = "Registrar"
     EMAIL = "Email"
     ASN = "ASNumber"
@@ -43,6 +46,12 @@ class EntityType(str, enum.Enum):
     WAF_SIGNATURE = "WAFSignature"
     TLS_CERTIFICATE = "TLSCertificate"  # Active (vs passive crtsh)
     MONITORING_SCHEDULE = "MonitoringSchedule"
+    # Phase 6 — Enterprise ASM & Advanced Intelligence
+    CLOUD_BUCKET = "CloudBucket"
+    TAKEOVER_VULNERABILITY = "TakeoverVulnerability"
+    EXPOSURE_LEAK = "ExposureLeak"
+    HISTORICAL_RECORD = "HistoricalRecord"
+
 
 
 class GraphNode(BaseModel):
@@ -60,6 +69,22 @@ class GraphNode(BaseModel):
             raise ValueError(f"URN must follow '<Type>:<Value>' format, received '{v}'")
         return v
 
+    @property
+    def threat_score(self) -> float:
+        return float(self.properties.get("threat_score", 0.0))
+
+    @threat_score.setter
+    def threat_score(self, val: float) -> None:
+        self.properties["threat_score"] = float(val)
+
+    def __init__(self, **data: Any):
+        if "threat_score" in data:
+            score = data.pop("threat_score")
+            props = data.setdefault("properties", {})
+            if "threat_score" not in props and score is not None:
+                props["threat_score"] = float(score)
+        super().__init__(**data)
+
     @classmethod
     def from_urn(cls, urn: str, properties: Optional[Dict[str, Any]] = None) -> GraphNode:
         parts = urn.split(":", 1)
@@ -69,6 +94,7 @@ class GraphNode(BaseModel):
             value=parts[1],
             properties=properties or {},
         )
+
 
 
 class GraphEdge(BaseModel):
@@ -96,6 +122,19 @@ class GraphEdge(BaseModel):
     def edge_key(self) -> Tuple[str, str, str]:
         """Unique deterministic edge identity tuple."""
         return (self.source, self.rel, self.target)
+
+    @property
+    def source_urn(self) -> str:
+        return self.source
+
+    @property
+    def target_urn(self) -> str:
+        return self.target
+
+    @property
+    def relationship(self) -> str:
+        return self.rel
+
 
     @property
     def hash_id(self) -> str:

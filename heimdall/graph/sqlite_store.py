@@ -226,6 +226,15 @@ class SqliteGraphStore(BaseGraphStore):
     def extract_subgraph(self, center_urn: str, radius: int = 2) -> List[GraphEdge]:
         return self._memory.extract_subgraph(center_urn, radius)
 
+    def analyze_attack_path(
+        self,
+        source_urn: Optional[str] = None,
+        target_urn: Optional[str] = None,
+        weighted: bool = True,
+        top_k: int = 5,
+    ) -> List[Dict[str, Any]]:
+        return self._memory.analyze_attack_path(source_urn, target_urn, weighted, top_k)
+
     async def load_session(self, session_id: str) -> bool:
         """
         Loads a persisted session back into memory from SQLite.
@@ -264,3 +273,19 @@ class SqliteGraphStore(BaseGraphStore):
         except Exception as exc:
             logger.error(f"Session load failed [{session_id}]: {exc}")
             return False
+
+    def analyze_attack_path(
+        self,
+        source_urn: Optional[str] = None,
+        target_urn: Optional[str] = None,
+        weighted: bool = True,
+        top_k: int = 5,
+    ) -> List[Dict[str, Any]]:
+        """Delegates attack path analysis to internal memory representation."""
+        return self._memory.analyze_attack_path(
+            source_urn=source_urn,
+            target_urn=target_urn,
+            weighted=weighted,
+            top_k=top_k,
+        )
+

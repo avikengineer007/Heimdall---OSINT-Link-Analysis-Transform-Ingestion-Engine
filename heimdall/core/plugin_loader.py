@@ -125,7 +125,7 @@ class PluginLoader:
         """
         target = plugin_dir or self.plugin_dir
         try:
-            from watchfiles import awatch
+            from watchfiles import awatch  # type: ignore
         except ImportError:
             logger.info(
                 "[PluginLoader] 'watchfiles' not installed — file-system watching disabled. "

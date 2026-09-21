@@ -136,6 +136,19 @@ class InvestigationRequest(BaseModel):
     kwargs: Dict[str, Any] = Field(default_factory=dict)
 
 
+class AttackPathRequest(BaseModel):
+    source_urn: Optional[str] = None
+    target_urn: Optional[str] = None
+    weighted: bool = True
+    top_k: int = Field(default=5, ge=1, le=20)
+
+
+class CopilotQueryRequest(BaseModel):
+    query: str
+
+
+
+
 # ─── Routes ───────────────────────────────────────────────────────────────────
 
 @app.get("/", include_in_schema=False)
@@ -331,6 +344,99 @@ async def delete_investigation(session_id: str):
     investigation_events.pop(session_id, None)
     investigation_meta.pop(session_id, None)
     return {"message": f"Session {session_id} deleted"}
+
+
+@app.post("/api/v1/investigations/{session_id}/attack-path", dependencies=[Depends(verify_auth)])
+async def analyze_attack_path(session_id: str, req: AttackPathRequest):
+    """
+    Computes shortest attack paths and critical attack vectors across the investigation graph.
+    If target_urn is provided, computes shortest path from source_urn to target_urn.
+    If target_urn is omitted, automatically discovers paths to high-risk crown jewel assets.
+    """
+    store = investigation_stores.get(session_id)
+    if not store:
+        raise HTTPException(status_code=404, detail="Investigation session not found")
+
+    paths = store.analyze_attack_path(
+        source_urn=req.source_urn,
+        target_urn=req.target_urn,
+        weighted=req.weighted,
+        top_k=req.top_k,
+    )
+    return {
+        "session_id": session_id,
+        "source_urn": req.source_urn,
+        "target_urn": req.target_urn,
+        "weighted": req.weighted,
+        "path_count": len(paths),
+        "paths": paths,
+    }
+
+
+# ─── Enterprise Intelligence Endpoints ────────────────────────────────────────
+
+@app.get("/api/v1/investigations/{session_id}/communities", dependencies=[Depends(verify_auth)])
+async def get_investigation_communities(session_id: str):
+    """Computes graph communities and modularity clustering for an investigation."""
+    store = investigation_stores.get(session_id)
+    if not store:
+        raise HTTPException(status_code=404, detail="Investigation session not found")
+    from heimdall.graph.clustering import GraphClusterEngine
+    clusters = GraphClusterEngine().detect_communities(store.get_nodes(), store.get_edges())
+    return {
+        "session_id": session_id,
+        "community_count": len(clusters),
+        "communities": clusters,
+    }
+
+
+@app.post("/api/v1/investigations/{session_id}/copilot/query", dependencies=[Depends(verify_auth)])
+async def query_copilot(session_id: str, req: CopilotQueryRequest):
+    """Processes a natural language query against graph assets."""
+    store = investigation_stores.get(session_id)
+    if not store:
+        raise HTTPException(status_code=404, detail="Investigation session not found")
+    from heimdall.core.copilot import ThreatCopilot
+    copilot = ThreatCopilot()
+    res = copilot.parse_query(req.query, store.get_nodes(), store.get_edges())
+    return {"session_id": session_id, **res}
+
+
+@app.get("/api/v1/investigations/{session_id}/copilot/briefing", dependencies=[Depends(verify_auth)])
+async def get_copilot_briefing(session_id: str):
+    """Generates an automated CISO executive threat intelligence briefing."""
+    store = investigation_stores.get(session_id)
+    if not store:
+        raise HTTPException(status_code=404, detail="Investigation session not found")
+    from heimdall.core.copilot import ThreatCopilot
+    copilot = ThreatCopilot()
+    attack_paths = store.analyze_attack_path(top_k=5)
+    briefing = copilot.generate_executive_briefing(store.get_nodes(), store.get_edges(), attack_paths)
+    return {"session_id": session_id, "briefing": briefing}
+
+
+@app.get("/api/v1/investigations/{session_id}/report/{report_format}", dependencies=[Depends(verify_auth)])
+async def get_executive_report(session_id: str, report_format: str):
+    """Generates an executive threat assessment report in HTML or Markdown."""
+    store = investigation_stores.get(session_id)
+    if not store:
+        raise HTTPException(status_code=404, detail="Investigation session not found")
+    from heimdall.graph.reports import ExecutiveReportGenerator
+    generator = ExecutiveReportGenerator()
+    target_name = investigation_meta.get(session_id, {}).get("seed", session_id[:8])
+    attack_paths = store.analyze_attack_path(top_k=5)
+
+    fmt = report_format.lower()
+    if fmt == "html":
+        content = generator.generate_html(target_name, store.get_nodes(), store.get_edges(), attack_paths)
+        return Response(content=content, media_type="text/html")
+    elif fmt in ("md", "markdown"):
+        content = generator.generate_markdown(target_name, store.get_nodes(), store.get_edges(), attack_paths)
+        return Response(content=content, media_type="text/markdown")
+    else:
+        raise HTTPException(status_code=400, detail="Supported report formats: html, md")
+
+
 
 
 # ─── Phase 5: Plugin SDK Endpoints ───────────────────────────────────────────

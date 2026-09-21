@@ -26,6 +26,12 @@ from heimdall.transforms.tls_cert_extract import TLSCertExtractTransform
 from heimdall.transforms.banner_grab import BannerGrabTransform
 from heimdall.transforms.http_security_audit import HTTPSecurityAuditTransform
 
+# Enterprise Recon & Threat Intelligence Transforms
+from heimdall.transforms.takeover import SubdomainTakeoverTransform
+from heimdall.transforms.cloud_buckets import CloudBucketHunterTransform
+from heimdall.transforms.historical import HistoricalReconTransform
+from heimdall.transforms.exposure_probe import ExposureProbeTransform
+
 __all__ = [
     "BaseTransform",
     "TransformRegistry",
@@ -50,4 +56,10 @@ __all__ = [
     "TLSCertExtractTransform",
     "BannerGrabTransform",
     "HTTPSecurityAuditTransform",
+    # Enterprise
+    "SubdomainTakeoverTransform",
+    "CloudBucketHunterTransform",
+    "HistoricalReconTransform",
+    "ExposureProbeTransform",
 ]
+

@@ -678,7 +678,7 @@
       bottom: 2rem;
       left: 50%;
       transform: translateX(-50%);
-      z-index: 90;
+      z-index: 40;
       background: rgba(10, 10, 15, 0.88);
       border: 1px solid var(--border-subtle);
       border-bottom: 2px solid var(--orange-accent);
@@ -912,13 +912,13 @@
       transform: translateX(-50%);
       display: flex;
       gap: 0.5rem;
-      background: rgba(10, 10, 15, 0.9);
-      backdrop-filter: blur(20px);
-      border: 1px solid var(--border-subtle);
+      background: rgba(12, 12, 18, 0.96);
+      backdrop-filter: blur(25px);
+      border: 1px solid rgba(255, 255, 255, 0.15);
       border-radius: var(--radius-sm);
-      padding: 0.4rem 0.6rem;
-      z-index: 10;
-      box-shadow: 0 8px 30px rgba(0,0,0,0.8);
+      padding: 0.45rem 0.75rem;
+      z-index: 100;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.9);
     }
 
     .canvas-btn {
@@ -1213,6 +1213,115 @@
       font-size: 1.4rem;
     }
 
+    /* ─── AI Threat Copilot Drawer Styles ─── */
+    .copilot-drawer {
+      position: absolute;
+      top: 1.25rem;
+      right: 360px;
+      width: 390px;
+      max-height: calc(100% - 2.5rem);
+      background: rgba(12, 12, 18, 0.95);
+      border: 1px solid var(--border-subtle);
+      border-top: 3px solid #38bdf8;
+      border-radius: var(--radius-sm);
+      backdrop-filter: blur(25px);
+      box-shadow: 0 15px 45px rgba(0, 0, 0, 0.85), 0 0 25px rgba(56, 189, 248, 0.15);
+      display: none;
+      flex-direction: column;
+      z-index: 150;
+      overflow: hidden;
+    }
+    .copilot-drawer.open {
+      display: flex;
+    }
+    .copilot-header {
+      padding: 0.85rem 1rem;
+      background: rgba(255, 255, 255, 0.02);
+      border-bottom: 1px solid var(--border-subtle);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .copilot-title {
+      font-family: var(--font-display);
+      font-weight: 700;
+      font-size: 0.82rem;
+      color: #FFF;
+      letter-spacing: 0.1em;
+    }
+    .copilot-sub {
+      font-family: var(--font-mono);
+      font-size: 0.6rem;
+      color: #38bdf8;
+      letter-spacing: 0.1em;
+    }
+    .copilot-body {
+      padding: 0.85rem;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      overflow-y: auto;
+      max-height: 480px;
+    }
+    .copilot-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.4rem;
+    }
+    .copilot-chip {
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-muted);
+      border-radius: 4px;
+      padding: 0.3rem 0.6rem;
+      font-size: 0.68rem;
+      font-family: var(--font-mono);
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    .copilot-chip:hover {
+      border-color: #38bdf8;
+      color: #fff;
+      background: rgba(56, 189, 248, 0.15);
+    }
+    .copilot-feed {
+      display: flex;
+      flex-direction: column;
+      gap: 0.65rem;
+      overflow-y: auto;
+      flex: 1;
+    }
+    .copilot-msg {
+      padding: 0.65rem 0.85rem;
+      border-radius: 6px;
+      font-size: 0.74rem;
+      line-height: 1.5;
+    }
+    .copilot-msg.user {
+      background: rgba(56, 189, 248, 0.12);
+      border: 1px solid rgba(56, 189, 248, 0.3);
+      align-self: flex-end;
+      color: #FFF;
+      max-width: 85%;
+    }
+    .copilot-msg.bot {
+      background: rgba(15, 23, 42, 0.8);
+      border: 1px solid rgba(56, 189, 248, 0.25);
+      color: var(--text-pure);
+      align-self: flex-start;
+      width: 100%;
+    }
+    .copilot-footer {
+      padding: 0.75rem 0.85rem;
+      border-top: 1px solid var(--border-subtle);
+      background: rgba(0, 0, 0, 0.3);
+    }
+    .copilot-footer form {
+      display: flex;
+      gap: 0.5rem;
+    }
+
     /* Responsive */
     @media (max-width: 1080px) {
       .hud-console { display: none; }
@@ -1223,6 +1332,7 @@
     }
   </style>
 </head>
+
 <body>
 
   <div class="cyber-grid"></div>
@@ -1476,13 +1586,59 @@
           <button class="canvas-btn" onclick="cy.fit(undefined, 30)" title="Fit all">⊡</button>
           <button class="canvas-btn" onclick="cy.center()" title="Center">◎</button>
           <button class="canvas-btn" onclick="runFastLayout()" title="Optimize Layout">⟳</button>
-          <button class="canvas-btn" onclick="togglePathMode()" id="path-mode-btn" title="A* Shortest Path">⚡</button>
+          <button class="canvas-btn" onclick="openAttackPathModal()" id="path-mode-btn" title="⚡ Shortest Path of Attack" style="color:#ff2a3b;border-color:rgba(255,42,59,0.7);background:rgba(255,42,59,0.15);box-shadow:0 0 10px rgba(255,42,59,0.4)">⚡</button>
+          <button class="canvas-btn" onclick="detectAndColorCommunities()" id="community-btn" title="🌐 Detect Infrastructure Communities & Clusters" style="color:#a78bfa;border-color:rgba(167,139,250,0.6);background:rgba(167,139,250,0.15)">🌐</button>
+          <button class="canvas-btn" onclick="toggleCopilotDrawer()" id="copilot-btn" title="🤖 AI Threat Copilot & Natural Language Query" style="color:#38bdf8;border-color:rgba(56,189,248,0.6);background:rgba(56,189,248,0.15)">🤖</button>
+          <button class="canvas-btn" onclick="openExecutiveReport('html')" id="report-btn" title="📑 Generate Executive Threat Report" style="color:#34d399;border-color:rgba(52,211,153,0.6);background:rgba(52,211,153,0.15)">📑</button>
           <button class="canvas-btn" onclick="toggleGroupByType()" id="group-btn" title="Group by Entity Type">🗂</button>
           <button class="canvas-btn" onclick="openDiffModal()" id="diff-btn" title="Compare Sessions (Diff)">🔀</button>
           <button class="canvas-btn" onclick="openExportModal()" title="Export Graph">⬇</button>
           <button class="canvas-btn" onclick="clearInvestigation()" title="Clear Graph" style="color:var(--red-primary)">🗑</button>
         </div>
+
+        <!-- Floating AI Threat Copilot Drawer -->
+        <div id="copilot-drawer" class="copilot-drawer">
+          <div class="copilot-header">
+            <div style="display:flex;align-items:center;gap:8px">
+              <span style="font-size:1.3rem">🤖</span>
+              <div>
+                <div class="copilot-title">THREAT COPILOT</div>
+                <div class="copilot-sub">AI HEURISTIC INTENT & BRIEFINGS</div>
+              </div>
+            </div>
+            <button class="canvas-btn" onclick="toggleCopilotDrawer()" style="width:28px;height:28px" title="Close Copilot">✕</button>
+          </div>
+
+          <div class="copilot-body">
+            <div class="copilot-chips">
+              <button class="copilot-chip" onclick="askCopilot('show high risk assets')">🚨 High Risk</button>
+              <button class="copilot-chip" onclick="askCopilot('find cloud buckets')">🪣 Cloud Buckets</button>
+              <button class="copilot-chip" onclick="askCopilot('subdomain takeovers')">⚡ DNS Takeovers</button>
+              <button class="copilot-chip" onclick="askCopilot('find sensitive leaks')">🔓 Exposures</button>
+              <button class="copilot-chip" onclick="askCopilot('show exposed databases')">🗄️ Databases</button>
+              <button class="copilot-chip" onclick="askCopilot('remote admin rdp ssh')">🖥️ RDP / SSH</button>
+            </div>
+
+            <button class="btn-lux btn-primary" onclick="generateExecutiveBriefing()" style="width:100%;justify-content:center;font-size:0.72rem;padding:0.55rem;border-radius:4px">
+              📋 Generate Executive Threat Briefing
+            </button>
+
+            <div id="copilot-feed" class="copilot-feed">
+              <div class="copilot-msg bot">
+                Greetings, Analyst. I am your Heimdall Threat Copilot. Ask me to isolate vulnerabilities, find cloud buckets, trace attack vectors, or click above for an automated CISO briefing.
+              </div>
+            </div>
+          </div>
+
+          <div class="copilot-footer">
+            <form id="copilot-form" onsubmit="handleCopilotSubmit(event)">
+              <input type="text" id="copilot-input" class="hero-input" style="height:36px;font-size:0.78rem" placeholder="Ask Copilot: e.g. show high risk, find open buckets..." autocomplete="off" />
+              <button type="submit" class="btn-lux btn-primary" style="padding:0.4rem 0.9rem;font-size:0.75rem">Ask</button>
+            </form>
+          </div>
+        </div>
       </main>
+
 
       <!-- Right Sidebar: Node Inspector -->
       <aside class="workbench-sidebar-right">
@@ -1526,6 +1682,7 @@
 
           <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:0.5rem">
             <button class="btn-lux btn-primary" style="font-size:0.7rem;padding:0.5rem 0.9rem" onclick="pivotFromSelected()">Pivot / Expand</button>
+            <button class="btn-lux" style="font-size:0.7rem;padding:0.5rem 0.9rem;background:#ff2a3b;color:#fff;border:1px solid #ff2a3b;box-shadow:0 0 10px rgba(255,42,59,0.4);cursor:pointer" onclick="findAttackPathFromSelected()" title="Analyze Shortest Path of Attack from this node">⚡ Attack Path</button>
             <button class="btn-lux btn-ghost" style="font-size:0.7rem;padding:0.5rem 0.9rem" onclick="focusOnSelected()">Focus</button>
             <button class="btn-lux btn-ghost" style="font-size:0.7rem;padding:0.5rem 0.9rem" onclick="copySelectedUrn()">Copy URN</button>
           </div>
@@ -1538,6 +1695,7 @@
   <!-- Context Menu -->
   <div id="ctx-menu">
     <div class="ctx-item" onclick="pivotFromCtxNode()">⚡ Pivot / Expand</div>
+    <div class="ctx-item" onclick="findAttackPathFromCtxNode()">🎯 Attack Path from here</div>
     <div class="ctx-item" onclick="focusOnCtxNode()">🔍 Focus Subgraph</div>
     <div class="ctx-item" onclick="pinCtxNode()">📌 Pin Node</div>
     <div class="ctx-divider"></div>
@@ -1552,7 +1710,13 @@
   <div class="modal-overlay" id="export-modal">
     <div class="modal-box">
       <h2>Export Graph Dataset</h2>
-      <div class="export-grid">
+      <div class="export-grid" style="grid-template-columns: repeat(3, 1fr);">
+        <div class="export-btn" onclick="openExecutiveReport('html')">
+          <span class="icon">📑</span>Executive HTML
+        </div>
+        <div class="export-btn" onclick="openExecutiveReport('md')">
+          <span class="icon">📝</span>Markdown Report
+        </div>
         <div class="export-btn" onclick="doExport('json')">
           <span class="icon">📄</span>JSON Spec
         </div>
@@ -1569,6 +1733,7 @@
       <div style="display:flex;justify-content:flex-end">
         <button class="btn-lux btn-ghost" onclick="closeExportModal()">Close</button>
       </div>
+
     </div>
   </div>
 
@@ -1592,6 +1757,59 @@
       </div>
     </div>
   </div>
+
+  <!-- Attack Path Analysis Modal -->
+  <div class="modal-overlay" id="attack-path-modal">
+    <div class="modal-box" style="width:540px;max-width:92vw">
+      <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.75rem">
+        <span style="font-size:1.6rem">⚡</span>
+        <div>
+          <h2 style="margin:0;font-size:1.2rem;color:var(--text-pure)">Shortest Path of Attack</h2>
+          <p style="font-size:0.78rem;color:var(--text-muted);margin:0">Analyze adversary lateral movement vectors & identify defensive chokepoints</p>
+        </div>
+      </div>
+      
+      <div style="display:flex;flex-direction:column;gap:0.85rem;margin-bottom:1.25rem">
+        <div>
+          <label style="font-family:var(--font-mono);font-size:0.7rem;color:var(--text-muted)">ENTRYPOINT / SOURCE NODE (URN)</label>
+          <input type="text" id="ap-source-input" list="ap-source-datalist" class="hero-input" style="height:38px;width:100%;margin-top:0.3rem" placeholder="e.g. Domain:example.com or pick a node" />
+          <datalist id="ap-source-datalist"></datalist>
+        </div>
+        <div>
+          <label style="font-family:var(--font-mono);font-size:0.7rem;color:var(--text-muted)">TARGET CROWN JEWEL (OPTIONAL)</label>
+          <input type="text" id="ap-target-input" list="ap-target-datalist" class="hero-input" style="height:38px;width:100%;margin-top:0.3rem" placeholder="Leave blank to auto-detect, or pick a target node" />
+          <datalist id="ap-target-datalist"></datalist>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem">
+          <div>
+            <label style="font-family:var(--font-mono);font-size:0.7rem;color:var(--text-muted)">ALGORITHM</label>
+            <select id="ap-algorithm-select" class="hero-input" style="height:38px;width:100%;margin-top:0.3rem;background:var(--bg-card);color:var(--text-pure);border:1px solid var(--border-subtle);border-radius:var(--radius-sm)">
+              <option value="weighted">Least Resistance (Dijkstra)</option>
+              <option value="unweighted">Fewest Hops (BFS)</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-family:var(--font-mono);font-size:0.7rem;color:var(--text-muted)">MAX VECTORS</label>
+            <input type="number" id="ap-topk-input" class="hero-input" style="height:38px;width:100%;margin-top:0.3rem" value="5" min="1" max="10" />
+          </div>
+        </div>
+      </div>
+
+      <!-- Live Results & Kill-Chain Breakdown -->
+      <div id="ap-results-panel" style="display:none;margin-bottom:1.25rem;max-height:240px;overflow-y:auto;background:rgba(0,0,0,0.5);border:1px solid var(--border-subtle);border-radius:var(--radius-sm);padding:0.85rem">
+        <div id="ap-results-content"></div>
+      </div>
+
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <button class="btn-lux btn-ghost" onclick="clearAttackPathHighlight()" id="ap-clear-btn" style="display:none;color:var(--text-muted);font-size:0.8rem">Clear Path Highlight</button>
+        <div style="display:flex;gap:0.75rem;margin-left:auto">
+          <button class="btn-lux btn-ghost" onclick="closeAttackPathModal()">Close</button>
+          <button class="btn-lux btn-primary" onclick="executeAttackPathAnalysis()" id="ap-execute-btn" style="background:var(--red-primary);box-shadow:0 0 14px var(--red-glow)">Compute Attack Path</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
 
   <!-- ═══════════════════════════════════════════════════════════════════ -->
   <!-- 3D THREE.JS SCRIPT & CONTROLS                                       -->
@@ -1861,6 +2079,7 @@
       const pillRadar = document.getElementById('pill-view-radar');
       const pillWb = document.getElementById('pill-view-workbench');
       const canvasCont = document.getElementById('canvas-container');
+      const ctlStrip = document.querySelector('.controls-strip');
 
       if (viewName === 'workbench') {
         radarView.style.display = 'none';
@@ -1868,6 +2087,7 @@
         pillRadar.classList.remove('active');
         pillWb.classList.add('active');
         canvasCont.style.opacity = '0.12';
+        if (ctlStrip) ctlStrip.style.display = 'none';
         setTimeout(() => {
           cy.resize();
           cy.fit(undefined, 30);
@@ -1878,6 +2098,7 @@
         pillWb.classList.remove('active');
         pillRadar.classList.add('active');
         canvasCont.style.opacity = '1';
+        if (ctlStrip) ctlStrip.style.display = 'flex';
       }
     }
 
@@ -1913,7 +2134,12 @@
       SecurityHeader:  { color: '#38bdf8', shape: 'round-rectangle', icon: '🛡️', label: 'Header' },
       WAFSignature:    { color: '#ec4899', shape: 'diamond',   icon: '🧱', label: 'WAF' },
       TLSCertificate:  { color: '#67e8f9', shape: 'round-rectangle', icon: '🔒', label: 'TLSCert' },
+      CloudBucket:     { color: '#0ea5e9', shape: 'round-rectangle', icon: '🪣', label: 'Bucket' },
+      TakeoverVulnerability: { color: '#ef4444', shape: 'octagon', icon: '⚡', label: 'Takeover' },
+      ExposureLeak:    { color: '#f59e0b', shape: 'diamond',   icon: '🔓', label: 'Leak' },
+      HistoricalRecord:{ color: '#c084fc', shape: 'round-rectangle', icon: '📜', label: 'Historical' },
     };
+
 
     function getEntityVisual(entityType) {
       return ENTITY_STYLES[entityType] || { color: '#8E8E9F', shape: 'ellipse', icon: '◉', label: entityType };
@@ -2022,6 +2248,47 @@
             'z-index': 999,
           }
         },
+        {
+          selector: 'node.attack-path-node',
+          style: {
+            'border-color': '#FF2A3B',
+            'border-width': 5,
+            'background-color': '#FF2A3B',
+            'overlay-color': '#FF2A3B',
+            'overlay-opacity': 0.4,
+            'overlay-padding': 10,
+            'z-index': 1000,
+            'opacity': 1,
+          }
+        },
+        {
+          selector: 'edge.attack-path-edge',
+          style: {
+            'line-color': '#FF2A3B',
+            'target-arrow-color': '#FF2A3B',
+            'width': 5,
+            'opacity': 1,
+            'z-index': 1000,
+          }
+        },
+        {
+          selector: '.attack-path-dimmed',
+          style: {
+            'opacity': 0.15,
+          }
+        },
+        {
+          selector: 'node.copilot-matched',
+          style: {
+            'border-color': '#38bdf8',
+            'border-width': 5,
+            'overlay-color': '#38bdf8',
+            'overlay-opacity': 0.35,
+            'overlay-padding': 10,
+            'z-index': 1000,
+          }
+        },
+
         {
           selector: 'node.delta-added',
           style: { 'border-color': '#34d399', 'border-width': 4, 'overlay-color': '#34d399', 'overlay-opacity': 0.25 }
@@ -2635,8 +2902,520 @@
       }
     }
 
+    // ─── Attack Path Analysis ──────────────────────────────────────────────────
+    function openAttackPathModal() {
+      document.getElementById('attack-path-modal').classList.add('open');
+      const srcInput = document.getElementById('ap-source-input');
+      if (selectedNode) {
+        srcInput.value = selectedNode.id();
+      } else if (!srcInput.value.trim()) {
+        const seedVal = document.getElementById('hero-seed-input')?.value.trim();
+        if (seedVal) {
+          srcInput.value = seedVal.includes(':') ? seedVal : `Domain:${seedVal}`;
+        } else {
+          const firstDomain = cy.nodes().filter(n => n.data('entityType') === 'Domain')[0];
+          if (firstDomain) srcInput.value = firstDomain.id();
+        }
+      }
+
+      // Populate auto-complete datalists with all active nodes in graph
+      if (typeof cy !== 'undefined') {
+        const optionsHtml = cy.nodes().map(n => 
+          `<option value="${n.id()}">${n.data('label') || n.id()} [${n.data('entityType')}] (Risk: ${n.data('threatScore') || 0})</option>`
+        ).join('');
+        const srcDl = document.getElementById('ap-source-datalist');
+        const tgtDl = document.getElementById('ap-target-datalist');
+        if (srcDl) srcDl.innerHTML = optionsHtml;
+        if (tgtDl) tgtDl.innerHTML = optionsHtml;
+      }
+    }
+
+    function closeAttackPathModal() {
+      document.getElementById('attack-path-modal').classList.remove('open');
+    }
+
+    function findAttackPathFromSelected() {
+      if (selectedNode) {
+        document.getElementById('ap-source-input').value = selectedNode.id();
+      }
+      openAttackPathModal();
+    }
+
+
+    function findAttackPathFromCtxNode() {
+      closeCtxMenu();
+      if (ctxTargetNode) {
+        document.getElementById('ap-source-input').value = ctxTargetNode.id();
+      }
+      openAttackPathModal();
+    }
+
+    function clearAttackPathHighlight() {
+      cy.batch(() => {
+        cy.elements().removeClass('attack-path-node attack-path-edge attack-path-dimmed');
+      });
+      document.getElementById('ap-clear-btn').style.display = 'none';
+      document.getElementById('ap-results-panel').style.display = 'none';
+      logActivity('Cleared attack path illumination', 'info');
+    }
+
+    async function executeAttackPathAnalysis() {
+      const sourceUrn = document.getElementById('ap-source-input').value.trim();
+      const targetUrn = document.getElementById('ap-target-input').value.trim() || null;
+      const algorithm = document.getElementById('ap-algorithm-select').value;
+      const topK = parseInt(document.getElementById('ap-topk-input').value) || 5;
+
+      if (!sourceUrn) {
+        alert('Please specify an Entrypoint / Source Node URN.');
+        return;
+      }
+
+      const btn = document.getElementById('ap-execute-btn');
+      btn.textContent = 'Analyzing...';
+      btn.disabled = true;
+
+      try {
+        let paths = [];
+
+        // 1. Try Backend API if investigation session exists
+        if (currentSessionId) {
+          const res = await fetch(`/api/v1/investigations/${currentSessionId}/attack-path`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              source_urn: sourceUrn,
+              target_urn: targetUrn,
+              weighted: algorithm === 'weighted',
+              top_k: topK
+            })
+          });
+          if (res.ok) {
+            const data = await res.json();
+            paths = data.paths || [];
+          }
+        }
+
+        // 2. Fallback to client-side graph traversal if backend has no session
+        if (!paths || paths.length === 0) {
+          const srcEle = cy.$id(sourceUrn);
+          if (srcEle.length > 0) {
+            let targets = [];
+            if (targetUrn) {
+              const tgtEle = cy.$id(targetUrn);
+              if (tgtEle.length > 0) targets.push(tgtEle);
+            } else {
+              // 1. Prioritize high-threat or exposed port/service nodes
+              targets = cy.nodes().filter(n => {
+                const threat = parseFloat(n.data('threatScore') || 0);
+                const type = n.data('entityType');
+                return n.id() !== sourceUrn && (threat >= 60 || type === 'Port' || type === 'PortService');
+              }).toArray();
+
+              // 2. If 0 high-risk nodes (clean graph), target operational nodes (IPs, Ports, Services) with highest relative score
+              if (targets.length === 0) {
+                targets = cy.nodes().filter(n => n.id() !== sourceUrn).toArray();
+                targets.sort((a, b) => {
+                  const typeA = a.data('entityType') || '';
+                  const typeB = b.data('entityType') || '';
+                  const boostA = ['IPv4', 'IPv6', 'Port', 'PortService'].includes(typeA) ? 25 : 0;
+                  const boostB = ['IPv4', 'IPv6', 'Port', 'PortService'].includes(typeB) ? 25 : 0;
+                  const threatA = parseFloat(a.data('threatScore') || 0) + boostA;
+                  const threatB = parseFloat(b.data('threatScore') || 0) + boostB;
+                  return threatB - threatA;
+                });
+              }
+            }
+
+            for (const tgt of targets.slice(0, topK)) {
+              const aStar = cy.elements().aStar({
+                root: srcEle,
+                goal: tgt,
+                directed: false,
+                weight: edge => {
+                  const targetThreat = parseFloat(edge.target().data('threatScore') || 0);
+                  return algorithm === 'weighted' ? Math.max(1, 100 - targetThreat) : 1;
+                }
+              });
+              if (aStar.found) {
+                const hops = [];
+                for (let i = 0; i < aStar.path.nodes().length - 1; i++) {
+                  const u = aStar.path.nodes()[i];
+                  const v = aStar.path.nodes()[i + 1];
+                  hops.push({
+                    source_urn: u.id(),
+                    target_urn: v.id(),
+                    relation: 'CONNECTED_TO',
+                    target_type: v.data('entityType') || 'Unknown',
+                    target_threat_score: v.data('threatScore') || 0
+                  });
+                }
+                paths.push({
+                  source_urn: sourceUrn,
+                  target_urn: tgt.id(),
+                  hop_count: aStar.path.nodes().length - 1,
+                  total_resistance: Math.round(aStar.distance),
+                  average_threat_score: 50,
+                  path_urns: aStar.path.nodes().map(n => n.id()),
+                  hops: hops,
+                  narrative: `Attack vector traverses from ${sourceUrn} to ${tgt.id()} in ${aStar.path.nodes().length - 1} lateral hops.`,
+                  chokepoints: aStar.path.nodes().slice(1, -1).map(n => n.id())
+                });
+              }
+            }
+          }
+        }
+
+        if (!paths || paths.length === 0) {
+          const resultsContent = document.getElementById('ap-results-content');
+          resultsContent.innerHTML = `
+            <div style="color:#fbbf24;font-size:0.75rem;padding:0.4rem;line-height:1.5">
+              <strong>⚠️ No Connected Attack Path Found</strong><br/>
+              <span style="color:var(--text-muted)">
+                <code>${sourceUrn}</code> is not connected to candidate targets in the active graph.<br/>
+                <strong>Recommendations:</strong><br/>
+                • Pick a specific target node from the <strong>TARGET CROWN JEWEL</strong> dropdown above.<br/>
+                • Or right-click <code>${sourceUrn}</code> and choose <strong>⚡ Pivot / Expand</strong> to discover its adjacent infrastructure first.
+              </span>
+            </div>
+          `;
+          document.getElementById('ap-results-panel').style.display = 'block';
+          return;
+        }
+
+        // Render UI Results & Cytoscape Illumination
+        cy.batch(() => {
+          cy.elements().removeClass('attack-path-node attack-path-edge attack-path-dimmed');
+          cy.elements().addClass('attack-path-dimmed');
+
+          paths.forEach(p => {
+            (p.path_urns || []).forEach(urn => {
+              const n = cy.$id(urn);
+              if (n.length) {
+                n.removeClass('attack-path-dimmed');
+                n.addClass('attack-path-node');
+              }
+            });
+
+            // Highlight connecting edges
+            for (let i = 0; i < (p.path_urns || []).length - 1; i++) {
+              const u = p.path_urns[i];
+              const v = p.path_urns[i + 1];
+              const e = cy.edges().filter(edge => 
+                (edge.source().id() === u && edge.target().id() === v) ||
+                (edge.source().id() === v && edge.target().id() === u)
+              );
+              e.removeClass('attack-path-dimmed');
+              e.addClass('attack-path-edge');
+            }
+          });
+        });
+
+        // Fit Cytoscape view to the illuminated attack path elements
+        const activePathElements = cy.$('.attack-path-node, .attack-path-edge');
+        if (activePathElements.length) {
+          cy.animate({
+            fit: { eles: activePathElements, padding: 50 },
+            duration: 500
+          });
+        }
+
+        // Render Results Panel
+        const resultsContent = document.getElementById('ap-results-content');
+        let html = `<div style="font-family:var(--font-mono);font-size:0.75rem;color:var(--red-primary);font-weight:700;margin-bottom:0.5rem">⚡ ${paths.length} ATTACK VECTOR(S) DISCOVERED</div>`;
+        paths.forEach((p, idx) => {
+          html += `
+            <div style="background:rgba(255,42,59,0.08);border:1px solid rgba(255,42,59,0.3);border-radius:4px;padding:0.6rem;margin-bottom:0.6rem">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.3rem">
+                <span style="font-weight:700;color:#fff;font-size:0.8rem">Vector #${idx+1}: ${p.target_urn}</span>
+                <span style="font-size:0.7rem;color:var(--text-muted)">${p.hop_count} Hops | Resistance: ${p.total_resistance}</span>
+              </div>
+              <div style="font-size:0.72rem;color:var(--text-muted);margin-bottom:0.4rem">${p.narrative}</div>
+              ${p.chokepoints && p.chokepoints.length ? `
+                <div style="font-size:0.7rem;color:#fbbf24">
+                  🛡️ <strong>Chokepoints:</strong> ${p.chokepoints.join(', ')}
+                </div>
+              ` : ''}
+            </div>
+          `;
+        });
+        resultsContent.innerHTML = html;
+        document.getElementById('ap-results-panel').style.display = 'block';
+        document.getElementById('ap-clear-btn').style.display = 'inline-block';
+
+        logActivity(`⚡ Attack Path Analysis: ${paths.length} vector(s) illuminated`, 'warning');
+      } catch (err) {
+        console.error(err);
+        alert(`Attack path computation failed: ${err.message}`);
+      } finally {
+        btn.textContent = 'Compute Attack Path';
+        btn.disabled = false;
+      }
+    }
+
+    // ─── AI Threat Copilot & Community Clustering ─────────────────────────────
+    function toggleCopilotDrawer() {
+      const drawer = document.getElementById('copilot-drawer');
+      drawer.classList.toggle('open');
+      if (drawer.classList.contains('open')) {
+        document.getElementById('copilot-input').focus();
+      }
+    }
+
+    function appendCopilotMessage(sender, htmlContent) {
+      const feed = document.getElementById('copilot-feed');
+      const msg = document.createElement('div');
+      msg.className = `copilot-msg ${sender}`;
+      msg.innerHTML = htmlContent;
+      feed.appendChild(msg);
+      feed.scrollTop = feed.scrollHeight;
+    }
+
+    async function handleCopilotSubmit(e) {
+      if (e) e.preventDefault();
+      const input = document.getElementById('copilot-input');
+      const query = input.value.trim();
+      if (!query) return;
+      input.value = '';
+      await askCopilot(query);
+    }
+
+    async function askCopilot(query) {
+      const drawer = document.getElementById('copilot-drawer');
+      if (!drawer.classList.contains('open')) {
+        drawer.classList.add('open');
+      }
+
+      appendCopilotMessage('user', query);
+      appendCopilotMessage('bot', '<span style="color:#94a3b8">🔍 Analyzing topology and threat indicators...</span>');
+      const feed = document.getElementById('copilot-feed');
+      const loadingMsg = feed.lastElementChild;
+
+      try {
+        let resData = null;
+        if (currentSessionId) {
+          const res = await fetch(`/api/v1/investigations/${currentSessionId}/copilot/query`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query }),
+          });
+          if (res.ok) resData = await res.json();
+        }
+
+        // Fallback to client-side heuristic search if offline or no session
+        if (!resData) {
+          const q = query.toLowerCase();
+          const matched = [];
+          cy.nodes().forEach(n => {
+            const val = (n.data('label') || n.id()).toLowerCase();
+            const type = (n.data('entityType') || '').toLowerCase();
+            const score = parseFloat(n.data('threatScore') || 0);
+
+            if (q.includes('high risk') || q.includes('critical')) {
+              if (score >= 50 || type.includes('takeover') || type.includes('leak')) matched.push(n.id());
+            } else if (q.includes('bucket') || q.includes('s3') || q.includes('storage')) {
+              if (type.includes('bucket') || val.includes('bucket') || val.includes('s3')) matched.push(n.id());
+            } else if (q.includes('takeover') || q.includes('cname')) {
+              if (type.includes('takeover') || val.includes('takeover')) matched.push(n.id());
+            } else if (q.includes('leak') || q.includes('exposure') || q.includes('.env')) {
+              if (type.includes('leak') || val.includes('.env') || val.includes('git')) matched.push(n.id());
+            } else if (q.includes('database') || q.includes('sql') || q.includes('redis') || q.includes('mongo')) {
+              if (val.includes('db') || val.includes('sql') || val.includes('redis') || val.includes('mongo') || val.includes('5432') || val.includes('3306')) matched.push(n.id());
+            } else if (q.includes('rdp') || q.includes('ssh') || q.includes('remote') || q.includes('admin')) {
+              if (val.includes('ssh') || val.includes('rdp') || val.includes('22') || val.includes('3389') || val.includes('445')) matched.push(n.id());
+            } else if (val.includes(q) || type.includes(q)) {
+              matched.push(n.id());
+            }
+          });
+          resData = {
+            query,
+            interpretation: `Filtering graph for: '${query}'`,
+            answer: `Found ${matched.length} matching entity${matched.length !== 1 ? 'ies' : 'y'}.`,
+            matched_nodes: matched,
+          };
+        }
+
+        // Highlight matched nodes on Cytoscape canvas
+        const matchedUrns = new Set(resData.matched_nodes || []);
+        cy.batch(() => {
+          cy.elements().removeClass('copilot-matched attack-path-dimmed');
+          if (matchedUrns.size > 0) {
+            cy.elements().addClass('attack-path-dimmed');
+            matchedUrns.forEach(urn => {
+              const ele = cy.$id(urn);
+              if (ele.length) {
+                ele.removeClass('attack-path-dimmed');
+                ele.addClass('copilot-matched');
+              }
+            });
+          }
+        });
+
+        const activeNodes = cy.$('.copilot-matched');
+        if (activeNodes.length) {
+          cy.animate({ fit: { eles: activeNodes, padding: 60 }, duration: 400 });
+        }
+
+        // Construct formatted response
+        let pillsHtml = '';
+        if (resData.matched_nodes && resData.matched_nodes.length) {
+          pillsHtml = '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px">';
+          resData.matched_nodes.slice(0, 12).forEach(urn => {
+            const shortName = urn.includes(':') ? urn.split(':')[1] : urn;
+            pillsHtml += `<span class="neighbor-chip" style="font-size:0.65rem;color:#38bdf8;padding:2px 6px" onclick="focusUrnFromCopilot('${urn}')">${shortName}</span>`;
+          });
+          if (resData.matched_nodes.length > 12) {
+            pillsHtml += `<span style="font-size:0.65rem;color:#64748b">+${resData.matched_nodes.length - 12} more</span>`;
+          }
+          pillsHtml += '</div>';
+        }
+
+        loadingMsg.innerHTML = `
+          <div style="font-family:var(--font-mono);font-size:0.68rem;color:#38bdf8;margin-bottom:4px">
+            // ${resData.interpretation}
+          </div>
+          <div>${resData.answer}</div>
+          ${pillsHtml}
+        `;
+        logActivity(`🤖 Copilot filtered ${resData.matched_nodes?.length || 0} nodes: "${query}"`, 'info');
+      } catch (err) {
+        loadingMsg.innerHTML = `<span style="color:#ef4444">Copilot error: ${err.message}</span>`;
+      }
+      feed.scrollTop = feed.scrollHeight;
+    }
+
+    function focusUrnFromCopilot(urn) {
+      const ele = cy.$id(urn);
+      if (ele.length) {
+        selectNode(ele);
+        cy.animate({ center: { eles: ele }, zoom: 1.5, duration: 400 });
+      }
+    }
+
+    async function generateExecutiveBriefing() {
+      const drawer = document.getElementById('copilot-drawer');
+      if (!drawer.classList.contains('open')) drawer.classList.add('open');
+
+      appendCopilotMessage('bot', '<span style="color:#94a3b8">📊 Compiling CISO Executive Threat Intelligence Briefing...</span>');
+      const feed = document.getElementById('copilot-feed');
+      const loadingMsg = feed.lastElementChild;
+
+      try {
+        let b = null;
+        if (currentSessionId) {
+          const res = await fetch(`/api/v1/investigations/${currentSessionId}/copilot/briefing`);
+          if (res.ok) {
+            const data = await res.json();
+            b = data.briefing;
+          }
+        }
+
+        if (!b) {
+          // Client-side computed briefing
+          const total = cy.nodes().length;
+          const high = cy.nodes().filter(n => parseFloat(n.data('threatScore') || 0) >= 60).length;
+          const rating = high >= 3 ? 'CRITICAL' : (high > 0 ? 'ELEVATED' : 'SECURE / LOW');
+          const col = rating === 'CRITICAL' ? '#ef4444' : (rating === 'ELEVATED' ? '#f97316' : '#22c55e');
+          b = {
+            posture_rating: rating,
+            posture_color: col,
+            total_assets: total,
+            high_risk_count: high,
+            takeovers_count: cy.nodes().filter(n => (n.data('entityType') || '').includes('Takeover')).length,
+            leaks_count: cy.nodes().filter(n => (n.data('entityType') || '').includes('Leak')).length,
+            buckets_count: cy.nodes().filter(n => (n.data('entityType') || '').includes('Bucket')).length,
+            key_findings: [
+              `Scanned ${total} perimeter entities and ${cy.edges().length} relational links.`,
+              `${high} high-risk assets requiring immediate remediation.`,
+            ],
+            recommendations: [
+              'Place exposed management interfaces behind zero-trust network access (ZTNA).',
+              'Perform continuous monitoring of authoritative DNS records.',
+            ],
+          };
+        }
+
+        const findingsList = (b.key_findings || []).map(f => `<li style="margin-bottom:3px">${f}</li>`).join('');
+        const recsList = (b.recommendations || []).map(r => `<li style="margin-bottom:3px">${r}</li>`).join('');
+
+        loadingMsg.innerHTML = `
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+            <span style="font-weight:700;color:#fff;font-size:0.8rem">EXECUTIVE THREAT BRIEFING</span>
+            <span style="background:${b.posture_color}25;border:1px solid ${b.posture_color};color:${b.posture_color};padding:2px 8px;border-radius:4px;font-size:0.68rem;font-weight:700">${b.posture_rating}</span>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin-bottom:8px;text-align:center">
+            <div style="background:rgba(0,0,0,0.4);padding:4px;border-radius:3px"><div style="font-weight:700;color:#38bdf8">${b.total_assets}</div><div style="font-size:0.6rem;color:#94a3b8">Assets</div></div>
+            <div style="background:rgba(0,0,0,0.4);padding:4px;border-radius:3px"><div style="font-weight:700;color:#f87171">${b.high_risk_count}</div><div style="font-size:0.6rem;color:#94a3b8">High Risk</div></div>
+            <div style="background:rgba(0,0,0,0.4);padding:4px;border-radius:3px"><div style="font-weight:700;color:#fb923c">${b.takeovers_count || 0}</div><div style="font-size:0.6rem;color:#94a3b8">Takeovers</div></div>
+          </div>
+          <div style="font-size:0.68rem;color:#e2e8f0;margin-bottom:6px"><strong>Key Findings:</strong><ul style="padding-left:14px;margin:2px 0">${findingsList}</ul></div>
+          <div style="font-size:0.68rem;color:#a78bfa;margin-bottom:8px"><strong>Strategic Roadmap:</strong><ol style="padding-left:14px;margin:2px 0">${recsList}</ol></div>
+          <button class="btn-lux btn-primary" onclick="openExecutiveReport('html')" style="width:100%;font-size:0.68rem;padding:0.4rem;justify-content:center">📑 View Full HTML CISO Report</button>
+        `;
+        logActivity(`📋 Generated Executive Threat Briefing: Status ${b.posture_rating}`, 'info');
+      } catch (err) {
+        loadingMsg.innerHTML = `<span style="color:#ef4444">Briefing failed: ${err.message}</span>`;
+      }
+      feed.scrollTop = feed.scrollHeight;
+    }
+
+    async function detectAndColorCommunities() {
+      logActivity('🌐 Computing modularity community detection on graph...', 'info');
+      const palette = ['#38bdf8', '#f43f5e', '#a855f7', '#34d399', '#fbbf24', '#ec4899', '#6366f1', '#14b8a6', '#06b6d4', '#84cc16'];
+
+      try {
+        let clusters = [];
+        if (currentSessionId) {
+          const res = await fetch(`/api/v1/investigations/${currentSessionId}/communities`);
+          if (res.ok) {
+            const data = await res.json();
+            clusters = data.communities || [];
+          }
+        }
+
+        if (!clusters || clusters.length === 0) {
+          // Client-side connected components clustering fallback
+          const comps = cy.elements().components();
+          clusters = comps.map((comp, idx) => ({
+            cluster_id: idx,
+            label: `Subnet Cluster #${idx+1}`,
+            node_count: comp.nodes().length,
+            nodes: comp.nodes().map(n => n.id()),
+          }));
+        }
+
+        cy.batch(() => {
+          clusters.forEach((c, idx) => {
+            const color = palette[idx % palette.length];
+            (c.nodes || []).forEach(urn => {
+              const node = cy.$id(urn);
+              if (node.length) {
+                node.style('background-color', color);
+                node.style('border-color', color);
+                node.data('communityId', c.cluster_id);
+              }
+            });
+          });
+        });
+
+        logActivity(`🌐 Clustered graph into ${clusters.length} infrastructure communities`, 'success');
+        alert(`🌐 Community Detection Complete!\nIdentified ${clusters.length} distinct infrastructure clusters across the active perimeter.`);
+      } catch (err) {
+        logActivity(`Community detection error: ${err.message}`, 'error');
+      }
+    }
+
+    function openExecutiveReport(format) {
+      closeExportModal();
+      if (!currentSessionId) {
+        alert('Please launch an investigation first before generating an executive threat intelligence report.');
+        return;
+      }
+      window.open(`/api/v1/investigations/${currentSessionId}/report/${format}`, '_blank');
+    }
+
     // Modal click-outside to close
-    ['export-modal', 'diff-modal'].forEach(mId => {
+
+    ['export-modal', 'diff-modal', 'attack-path-modal'].forEach(mId => {
       document.getElementById(mId).addEventListener('click', e => {
         if (e.target === document.getElementById(mId)) {
           document.getElementById(mId).classList.remove('open');
@@ -2648,9 +3427,10 @@
     document.addEventListener('keydown', e => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'e') { e.preventDefault(); openExportModal(); }
       if ((e.ctrlKey || e.metaKey) && e.key === 'f') { e.preventDefault(); document.getElementById('hero-seed-input').focus(); }
-      if (e.key === 'Escape') { closeExportModal(); closeDiffModal(); closeCtxMenu(); }
+      if (e.key === 'Escape') { closeExportModal(); closeDiffModal(); closeAttackPathModal(); closeCtxMenu(); }
       if (e.key === 'Delete' && selectedNode) { selectedNode.remove(); updateStatsUI(); clearInspector(); }
     });
   </script>
 </body>
 </html>
+

@@ -132,3 +132,27 @@ class MemoryGraphStore(BaseGraphStore):
         undirected = self._graph.to_undirected(as_view=True)
         sub_nodes = set(nx.ego_graph(undirected, center_urn, radius=radius).nodes())
         return [e for e in self._edges_map.values() if e.source in sub_nodes and e.target in sub_nodes]
+
+    def get_networkx_graph(self) -> nx.MultiDiGraph:
+        """Returns the internal NetworkX graph instance."""
+        return self._graph
+
+    def analyze_attack_path(
+        self,
+        source_urn: Optional[str] = None,
+        target_urn: Optional[str] = None,
+        weighted: bool = True,
+        top_k: int = 5,
+    ) -> List[Dict[str, Any]]:
+        """
+        Computes shortest attack paths and critical attack vectors.
+        If target_urn is supplied, computes path from source to target.
+        If omitted, automatically finds paths from source to critical crown-jewel assets.
+        """
+        from heimdall.graph.attack_path import AttackPathAnalyzer
+        analyzer = AttackPathAnalyzer(self.get_nodes(), self.get_edges())
+        if target_urn and source_urn:
+            res = analyzer.find_shortest_path(source_urn, target_urn, weighted=weighted)
+            return [res.to_dict()] if res else []
+        return [p.to_dict() for p in analyzer.find_critical_attack_paths(source_urn=source_urn, top_k=top_k, weighted=weighted)]
+

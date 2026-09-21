@@ -35,7 +35,7 @@ class Neo4jGraphStore(BaseGraphStore):
     async def connect(self) -> bool:
         """Initializes async driver connection and applies index constraints."""
         try:
-            import neo4j
+            import neo4j  # type: ignore
             self._driver = neo4j.AsyncGraphDatabase.driver(
                 self.uri, auth=(self.user, self.password)
             )
