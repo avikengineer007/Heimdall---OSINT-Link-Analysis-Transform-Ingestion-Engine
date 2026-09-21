@@ -1,13 +1,3 @@
----
-title: Heimdall OSINT & Threat Link Engine
-emoji: 🛡️
-colorFrom: red
-colorTo: orange
-sdk: docker
-app_port: 7860
-pinned: false
----
-
 # Heimdall OSINT Engine 🛡️
 > **Autonomous Link-Analysis Transform & Threat Ingestion Engine**  
 > *A high-performance, asynchronous, open-source alternative to commercial platforms like Maltego.*
